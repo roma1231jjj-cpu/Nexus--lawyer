@@ -1,0 +1,41 @@
+appId: ru.autsquad.nexuslawyer
+productName: Nexus-Юрист
+copyright: Nexus × АутSquad
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+  - build/icon.ico
+extraResources:
+  - from: resources/laws
+    to: laws
+  - from: resources/versions.json
+    to: versions.json
+afterPack: scripts/after-pack.cjs
+win:
+  icon: build/icon.ico
+  signAndEditExecutable: false
+  target:
+    - target: nsis
+      arch:
+        - x64
+  requestedExecutionLevel: asInvoker
+  legalTrademarks: Nexus × АутSquad
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Nexus-Юрист
+  uninstallDisplayName: Nexus-Юрист
+  deleteAppDataOnUninstall: false
+publish:
+  provider: github
+  owner: roma1231jjj-cpu
+  repo: Nexus--lawyer
+  releaseType: release
