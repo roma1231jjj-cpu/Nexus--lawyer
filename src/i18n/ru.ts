@@ -1,5 +1,6 @@
 export const ru = {
   'app.name': 'Nexus-Юрист',
+  'app.title': 'Nexus-Юрист',
   'app.brand': 'Nexus × АутSquad',
   'app.loading': 'Загрузка правовой базы…',
   'app.footerTitle': 'Справочная выдержка.',

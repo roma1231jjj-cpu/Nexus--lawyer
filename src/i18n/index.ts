@@ -31,7 +31,7 @@ let current: Lang = readLang();
 function applyDocumentLang(lang: Lang) {
   if (typeof document === 'undefined') return;
   document.documentElement.lang = lang;
-  document.title = lang === 'en' ? 'Nexus-Lawyer' : 'Nexus-Юрист';
+  document.title = dictionaries[lang]['app.title'];
 }
 
 applyDocumentLang(current);

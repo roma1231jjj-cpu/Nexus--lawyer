@@ -4,6 +4,7 @@ type Dict = Record<keyof typeof ru, string>;
 
 export const en: Dict = {
   'app.name': 'Nexus-Lawyer',
+  'app.title': 'Nexus-Lawyer',
   'app.brand': 'Nexus × АутSquad',
   'app.loading': 'Loading the law database…',
   'app.footerTitle': 'Reference excerpt.',
