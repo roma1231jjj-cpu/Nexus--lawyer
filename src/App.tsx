@@ -244,7 +244,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app" key={lang}>
       <aside className="sidebar">
         <div className="brand">
           <Logo size={38} />
