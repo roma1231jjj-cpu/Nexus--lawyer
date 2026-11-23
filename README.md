@@ -8,11 +8,15 @@
 
 Интерфейс двуязычный — русский и английский, переключение мгновенное, без перезапуска.
 
-| Русский интерфейс | English interface |
+Три темы, как во всех приложениях Nexus: Midnight (чёрный + фиолетовый), Ivory (белый + синий), Aurum (тёмный + золотой). Скриншоты — английский интерфейс.
+
+| Midnight | Ivory | Aurum |
+|---|---|---|
+| ![English, Midnight](docs/screenshots/en-midnight.png) | ![English, Ivory](docs/screenshots/en-ivory.png) | ![English, Aurum](docs/screenshots/en-aurum.png) |
+
+| Русский интерфейс | Настройки, English |
 |---|---|
-| ![Консультация, тема Midnight](docs/screenshots/ru-chat.png) | ![Consultation, Midnight theme](docs/screenshots/en-chat.png) |
-| ![Документы, тема Aurum](docs/screenshots/ru-docs.png) | ![Documents, Aurum theme](docs/screenshots/en-docs.png) |
-| ![Настройки, тема Ivory](docs/screenshots/ru-settings.png) | ![Settings, Ivory theme](docs/screenshots/en-settings.png) |
+| ![Русский, Midnight](docs/screenshots/ru-chat.png) | ![Settings, English](docs/screenshots/en-settings.png) |
 
 ## Язык интерфейса
 

@@ -10,9 +10,15 @@ The interface is bilingual — Russian and English, switching is instant and nee
 
 | English interface | Русский интерфейс |
 |---|---|
-| ![Consultation, Midnight theme](docs/screenshots/en-chat.png) | ![Консультация, тема Midnight](docs/screenshots/ru-chat.png) |
-| ![Documents, Aurum theme](docs/screenshots/en-docs.png) | ![Документы, тема Aurum](docs/screenshots/ru-docs.png) |
-| ![Settings, Ivory theme](docs/screenshots/en-settings.png) | ![Настройки, тема Ivory](docs/screenshots/ru-settings.png) |
+Three themes, the same across every Nexus app: Midnight (black + violet), Ivory (white + blue), Aurum (dark + gold). Screenshots show the English interface.
+
+| Midnight | Ivory | Aurum |
+|---|---|---|
+| ![English, Midnight](docs/screenshots/en-midnight.png) | ![English, Ivory](docs/screenshots/en-ivory.png) | ![English, Aurum](docs/screenshots/en-aurum.png) |
+
+| Settings | Russian interface |
+|---|---|
+| ![Settings, English](docs/screenshots/en-settings.png) | ![Русский, Midnight](docs/screenshots/ru-chat.png) |
 
 ## Interface language
 
