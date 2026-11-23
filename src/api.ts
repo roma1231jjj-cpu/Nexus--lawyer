@@ -93,11 +93,11 @@ export type Api = {
   lawsOverview(): Promise<{ countries: Country[]; counts: Record<string, { name: string; flag: string; count: number }>; total: { articles: number; countries: number } }>;
   lawsSearch(payload: { query: string; country?: string }): Promise<{ article: Article; score: number }[]>;
   lawsCountry(country: string): Promise<{ articles: Article[]; codes: { code: string; short: string; count: number }[] }>;
-  lawsImport(): Promise<{ imported: number }>;
+  lawsImport(): Promise<{ imported: number; failed?: number; canceled?: boolean }>;
   cases(): Promise<LegalCase[]>;
   saveCase(item: LegalCase): Promise<LegalCase>;
   deleteCase(id: string): Promise<boolean>;
-  attach(id: string): Promise<{ files: CaseFile[] }>;
+  attach(id: string): Promise<{ files: CaseFile[]; saved?: boolean; canceled?: boolean }>;
   openFile(target: string): Promise<boolean>;
   revealCase(id: string): Promise<boolean>;
   openDataFolder(): Promise<boolean>;

@@ -29,18 +29,23 @@ export default function SettingsView({ settings, onSave, onTheme, onLanguage, in
 
   const persist = async (patch: Partial<Settings>) => {
     setDraft({ ...draft, ...patch });
-    await onSave(patch);
+    await onSave(patch).catch(() => undefined);
   };
 
   const probeModels = async () => {
     setProbe(t('settings.probing'));
-    const result = await api.models(draft);
-    if (result.ok) {
-      setModels(result.models);
-      setProbe(t('settings.found', { n: result.models.length }));
-    } else {
+    try {
+      const result = await api.models(draft);
+      if (result.ok) {
+        setModels(result.models);
+        setProbe(t('settings.found', { n: result.models.length }));
+      } else {
+        setModels([]);
+        setProbe(t('settings.noServer', { error: result.error ?? t('settings.noLink') }));
+      }
+    } catch (error) {
       setModels([]);
-      setProbe(t('settings.noServer', { error: result.error ?? t('settings.noLink') }));
+      setProbe(t('settings.probeFailed', { error: error instanceof Error ? error.message : String(error) }));
     }
   };
 
@@ -130,9 +135,15 @@ export default function SettingsView({ settings, onSave, onTheme, onLanguage, in
             <label>{t('settings.theme')}</label>
             <div className="row">
               {(['midnight', 'ivory', 'aurum'] as Theme[]).map((theme) => (
-                <button key={theme} className={`chip ${settings.theme === theme ? 'active' : ''}`} onClick={() => onTheme(theme)}>
-                  <span className={`theme-dot ${settings.theme === theme ? 'active' : ''}`} data-theme-opt={theme} style={{ width: 12, height: 12 }} />
-                  {theme === 'midnight' ? 'Midnight' : theme === 'ivory' ? 'Ivory' : 'Aurum'}
+                <button
+                  key={theme}
+                  className={`chip ${settings.theme === theme ? 'active' : ''}`}
+                  onClick={() => onTheme(theme)}
+                  aria-pressed={settings.theme === theme}
+                  aria-label={t(theme === 'midnight' ? 'theme.midnight' : theme === 'ivory' ? 'theme.ivory' : 'theme.aurum')}
+                >
+                  <span className={`theme-dot ${settings.theme === theme ? 'active' : ''}`} data-theme-opt={theme} style={{ width: 12, height: 12 }} aria-hidden="true" />
+                  {t(theme === 'midnight' ? 'theme.midnight' : theme === 'ivory' ? 'theme.ivory' : 'theme.aurum')}
                 </button>
               ))}
             </div>
@@ -152,8 +163,12 @@ export default function SettingsView({ settings, onSave, onTheme, onLanguage, in
           <div className="field">
             <label>{t('settings.channel')}</label>
             <div className="row">
-              <button className={`chip ${draft.channel === 'stable' ? 'active' : ''}`} onClick={() => persist({ channel: 'stable' })}>stable</button>
-              <button className={`chip ${draft.channel === 'beta' ? 'active' : ''}`} onClick={() => persist({ channel: 'beta' })}>beta</button>
+              <button className={`chip ${draft.channel === 'stable' ? 'active' : ''}`} onClick={() => persist({ channel: 'stable' })} aria-pressed={draft.channel === 'stable'}>
+                {t('updates.channelStable')}
+              </button>
+              <button className={`chip ${draft.channel === 'beta' ? 'active' : ''}`} onClick={() => persist({ channel: 'beta' })} aria-pressed={draft.channel === 'beta'}>
+                {t('updates.channelBeta')}
+              </button>
             </div>
           </div>
           <div className="field" style={{ marginBottom: 0 }}>
@@ -174,8 +189,8 @@ export default function SettingsView({ settings, onSave, onTheme, onLanguage, in
             <button className="btn ghost sm hint" onClick={() => api.openDataFolder()}>{t('settings.openFolder')}</button>
           </div>
           <div className="row" style={{ flexWrap: 'wrap', gap: 18 }}>
-            <div className="tiny dim">{t('settings.dataPath')} <b>{info?.userData || '—'}</b></div>
-            <div className="tiny dim">{t('settings.version')} <b>{info?.version}</b> · Electron <b>{info?.electron}</b> · {info?.packaged ? t('settings.packaged') : 'dev'}</div>
+            <div className="tiny dim">{t('settings.dataPath')} <b className="path">{info?.userData || '—'}</b></div>
+            <div className="tiny dim">{t('settings.version')} <b>{info?.version}</b> · Electron <b>{info?.electron}</b> · {info?.packaged ? t('settings.packaged') : t('app.buildDev')}</div>
           </div>
           <div className="divider" />
           <div className="link-row">

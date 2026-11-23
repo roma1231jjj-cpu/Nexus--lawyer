@@ -110,7 +110,7 @@ export function formatDateTime(value: string | number | Date, lang: Lang, option
 }
 
 export function countryLabel(code: string, fallback: string | undefined, lang: Lang) {
-  if (lang === 'en') return countryNamesEn[code] ?? fallback ?? code;
+  if (lang === 'en') return countryNamesEn[code] ?? code;
   return fallback ?? code;
 }
 

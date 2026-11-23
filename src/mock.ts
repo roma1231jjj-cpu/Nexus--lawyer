@@ -1,4 +1,4 @@
-import { templates } from '../electron/docs';
+import { getTemplates } from '../electron/docs';
 import type { Api, Article, Country, LegalCase, Settings } from './api';
 
 const SETTINGS_KEY = 'nl-settings';
@@ -99,7 +99,7 @@ export function createMockApi(): Api {
       }
       return { articles: list, codes: [...codes.values()] };
     },
-    lawsImport: async () => ({ imported: 0 }),
+    lawsImport: async () => ({ imported: 0, failed: 0, canceled: false }),
     cases: async () => cases,
     saveCase: async (item) => {
       const next = { ...item, updatedAt: new Date().toISOString() };
@@ -113,11 +113,14 @@ export function createMockApi(): Api {
       writeJson(CASES_KEY, cases);
       return true;
     },
-    attach: async (id) => ({ files: cases.find((entry) => entry.id === id)?.files ?? [] }),
+    attach: async (id) => {
+      const found = cases.find((entry) => entry.id === id);
+      return { files: found?.files ?? [], saved: Boolean(found), canceled: false };
+    },
     openFile: async () => true,
     revealCase: async () => true,
     openDataFolder: async () => true,
-    templates: async () => templates,
+    templates: async () => getTemplates(document.documentElement.lang === 'en' ? 'en' : 'ru'),
     exportDoc: async () => ({ saved: false }),
     localVersions: async () => [],
     remoteVersions: async () => ({ ok: false, items: [], error: 'browser preview' }),

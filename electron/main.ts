@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { createStore } from './store';
 import { createLaws, type Article } from './laws';
 import { buildSources, buildSystemPrompt, listModels, offlineAnswer, streamChat, type ChatMessage } from './ai';
-import { templates, fillTemplate } from './docs';
+import { getTemplates, fillTemplate } from './docs';
 import { createUpdater, REPO, type UpdateStatus } from './updater';
 import { resolveLang, tr } from './i18n';
 
@@ -173,22 +173,29 @@ function registerIpc() {
       filters: [{ name: trNow('dialog.importFilter'), extensions: ['json'] }],
       properties: ['openFile', 'multiSelections']
     });
-    if (result.canceled) return { imported: 0 };
+    if (result.canceled) return { imported: 0, failed: 0, canceled: true };
     const dir = path.join(app.getPath('userData'), 'laws-user');
     fs.mkdirSync(dir, { recursive: true });
     let imported = 0;
+    let failed = 0;
     for (const file of result.filePaths) {
       try {
         const pack = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const articles = Array.isArray(pack?.articles) ? pack.articles : [];
+        if (!articles.length) {
+          failed += 1;
+          continue;
+        }
         const name = path.basename(file);
         fs.writeFileSync(path.join(dir, `${Date.now()}-${name}`), JSON.stringify(pack, null, 2));
-        imported += (pack.articles ?? []).length;
+        imported += articles.length;
       } catch {
+        failed += 1;
         continue;
       }
     }
     laws.reload();
-    return { imported };
+    return { imported, failed, canceled: false };
   });
 
   ipcMain.handle('cases:list', () => readCases());
@@ -206,13 +213,13 @@ function registerIpc() {
     return true;
   });
   ipcMain.handle('cases:attach', async (_event, id: string) => {
-    const result = await dialog.showOpenDialog(win!, { title: trNow('dialog.attachTitle'), properties: ['openFile', 'multiSelections'] });
-    if (result.canceled) return { files: readCases().find((entry) => entry.id === id)?.files ?? [] };
-    const dir = path.join(app.getPath('userData'), 'cases', id);
-    fs.mkdirSync(dir, { recursive: true });
     const items = readCases();
     const item = items.find((entry) => entry.id === id);
-    if (!item) return { files: [] };
+    if (!item) return { files: [], saved: false, canceled: false };
+    const result = await dialog.showOpenDialog(win!, { title: trNow('dialog.attachTitle'), properties: ['openFile', 'multiSelections'] });
+    if (result.canceled) return { files: item.files ?? [], saved: true, canceled: true };
+    const dir = path.join(app.getPath('userData'), 'cases', id);
+    fs.mkdirSync(dir, { recursive: true });
     for (const source of result.filePaths) {
       const target = path.join(dir, path.basename(source));
       fs.copyFileSync(source, target);
@@ -220,7 +227,7 @@ function registerIpc() {
       item.files = [...(item.files ?? []), { name: path.basename(source), path: target, size, addedAt: new Date().toISOString() }];
     }
     writeCases(items);
-    return { files: item.files };
+    return { files: item.files, saved: true, canceled: false };
   });
   ipcMain.handle('cases:openFile', (_event, target: string) => {
     if (fs.existsSync(target)) shell.openPath(target);
@@ -229,7 +236,7 @@ function registerIpc() {
   ipcMain.handle('cases:reveal', (_event, id: string) => shell.openPath(path.join(app.getPath('userData'), 'cases', id)));
   ipcMain.handle('cases:openFolder', () => shell.openPath(app.getPath('userData')));
 
-  ipcMain.handle('docs:templates', () => templates);
+  ipcMain.handle('docs:templates', () => getTemplates(resolveLang(store.getSettings().language)));
   ipcMain.handle('docs:export', async (_event, payload: { name: string; text: string; format: 'txt' | 'md' | 'doc' }) => {
     const ext = payload.format;
     const result = await dialog.showSaveDialog(win!, {

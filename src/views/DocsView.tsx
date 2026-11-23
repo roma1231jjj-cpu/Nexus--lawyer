@@ -28,21 +28,34 @@ export default function DocsView(_props: Props) {
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    api.templates().then((list) => {
-      setTemplates(list);
-      setActiveId(list[0]?.id ?? '');
-      if (window.__nexusShots && list[0]) setValues({ ...docsRu.sample });
-    });
-  }, []);
+    let cancelled = false;
+    api
+      .templates()
+      .then((list) => {
+        if (cancelled) return;
+        setTemplates(list);
+        setActiveId((prev) => (list.some((item) => item.id === prev) ? prev : list[0]?.id ?? ''));
+        if (window.__nexusShots && list[0]) setValues({ ...docsRu.sample });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [lang]);
 
   const active = templates.find((item) => item.id === activeId);
   const text = useMemo(() => (active ? fill(active, values) : ''), [active, values]);
 
   const exportAs = async (format: 'txt' | 'md' | 'doc') => {
     if (!active) return;
-    const result = await api.exportDoc({ name: active.name, text, format });
-    if (result.saved) {
-      setStatus(t('docs.saved', { path: result.path ?? '' }));
+    try {
+      const result = await api.exportDoc({ name: active.name, text, format });
+      if (result.saved) {
+        setStatus(t('docs.saved', { path: result.path ?? '' }));
+        setTimeout(() => setStatus(null), 5000);
+      }
+    } catch {
+      setStatus(t('docs.saveFailed'));
       setTimeout(() => setStatus(null), 5000);
     }
   };
@@ -113,8 +126,12 @@ export default function DocsView(_props: Props) {
                 <button className="btn primary sm" onClick={() => exportAs('doc')}>
                   <IconDownload size={13} /> {t('docs.downloadDoc')}
                 </button>
-                <button className="btn sm" onClick={() => exportAs('md')}>.md</button>
-                <button className="btn sm" onClick={() => exportAs('txt')}>.txt</button>
+                <button className="btn sm" onClick={() => exportAs('md')} aria-label={t('docs.exportMd')}>
+                  .md
+                </button>
+                <button className="btn sm" onClick={() => exportAs('txt')} aria-label={t('docs.exportTxt')}>
+                  .txt
+                </button>
                 <button className="btn ghost sm" onClick={() => navigator.clipboard?.writeText(text)}>
                   {t('docs.copyText')}
                 </button>

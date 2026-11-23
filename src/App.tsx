@@ -49,6 +49,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [update, setUpdate] = useState<UpdateStatus>({ stage: 'idle' });
   const [info, setInfo] = useState<{ version: string; packaged: boolean; userData: string; electron: string } | null>(null);
+  const [pendingSave, setPendingSave] = useState<ChatMessage | null>(null);
+  const [saveTarget, setSaveTarget] = useState('');
+  const [toast, setToast] = useState<string | null>(null);
   const requestRef = useRef<string | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
 
@@ -165,23 +168,33 @@ export default function App() {
       setBusy(true);
       setView('chat');
 
-      const result = await api.chat({ requestId, messages: history, query: text, country });
-      requestRef.current = null;
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === requestId
-            ? {
-                ...msg,
-                text: result.text || t('chat.emptyAnswer'),
-                sources: result.sources,
-                mode: result.mode,
-                error: result.error,
-                pending: false
-              }
-            : msg
-        )
-      );
-      setBusy(false);
+      try {
+        const result = await api.chat({ requestId, messages: history, query: text, country });
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === requestId
+              ? {
+                  ...msg,
+                  text: result.text || t('chat.emptyAnswer'),
+                  sources: result.sources,
+                  mode: result.mode,
+                  error: result.error,
+                  pending: false
+                }
+              : msg
+          )
+        );
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === requestId ? { ...msg, text: '', mode: 'offline', error: detail, pending: false } : msg
+          )
+        );
+      } finally {
+        requestRef.current = null;
+        setBusy(false);
+      }
     },
     [busy, country, t]
   );
@@ -195,31 +208,49 @@ export default function App() {
     setBusy(false);
   }, []);
 
-  const saveToCase = useCallback(
-    async (message: ChatMessage) => {
-      let target = cases[0];
-      if (!target) {
-        target = {
-          id: uid(),
-          title: t('app.caseTitle', { date: formatDate(new Date(), lang) }),
-          client: '',
-          status: 'open',
-          country,
-          summary: message.text.slice(0, 160),
-          notes: [],
-          files: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-      }
+  const openSaveToCase = useCallback(
+    (message: ChatMessage) => {
+      setSaveTarget(cases[0]?.id ?? '__new');
+      setPendingSave(message);
+    },
+    [cases]
+  );
+
+  const confirmSaveToCase = useCallback(async () => {
+    const message = pendingSave;
+    if (!message) return;
+    const existing = cases.find((item) => item.id === saveTarget);
+    const target: LegalCase = existing ?? {
+      id: uid(),
+      title: t('app.caseTitle', { date: formatDate(new Date(), lang) }),
+      client: '',
+      status: 'open',
+      country,
+      summary: message.text.slice(0, 160),
+      notes: [],
+      files: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    try {
       const saved = await api.saveCase({
         ...target,
         notes: [...target.notes, { id: uid(), text: message.text, createdAt: new Date().toISOString() }]
       });
       setCases((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
-    },
-    [cases, country, lang, t]
-  );
+      setPendingSave(null);
+      setToast(t('cases.savedTo', { title: saved.title || t('cases.untitled') }));
+    } catch {
+      setPendingSave(null);
+      setToast(t('cases.saveFailed'));
+    }
+  }, [cases, country, lang, pendingSave, saveTarget, t]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4200);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const refreshCases = useCallback(async () => {
     setCases(await api.cases());
@@ -244,7 +275,7 @@ export default function App() {
   }
 
   return (
-    <div className="app" key={lang}>
+    <div className="app">
       <aside className="sidebar">
         <div className="brand">
           <Logo size={38} />
@@ -274,7 +305,7 @@ export default function App() {
           </div>
           <div className="side-meta">
             <span>v{info?.version ?? '1.0.0'}</span>
-            <span>{info?.packaged ? 'portable / installer' : 'dev'}</span>
+            <span>{info?.packaged ? t('app.buildPortable') : t('app.buildDev')}</span>
           </div>
         </div>
       </aside>
@@ -291,6 +322,8 @@ export default function App() {
                   className={`theme-dot ${settings.theme === theme ? 'active' : ''}`}
                   data-theme-opt={theme}
                   onClick={() => applyTheme(theme, true)}
+                  aria-label={t(theme === 'midnight' ? 'theme.midnight' : theme === 'ivory' ? 'theme.ivory' : 'theme.aurum')}
+                  aria-pressed={settings.theme === theme}
                   title={t(theme === 'midnight' ? 'theme.midnight' : theme === 'ivory' ? 'theme.ivory' : 'theme.aurum')}
                 />
               ))}
@@ -336,7 +369,7 @@ export default function App() {
               onSend={send}
               onStop={stop}
               onClear={() => setMessages([])}
-              onSaveToCase={saveToCase}
+              onSaveToCase={openSaveToCase}
               onOpenSettings={() => setView('settings')}
               countryName={countryName}
               model={settings.model}
@@ -372,6 +405,42 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {pendingSave && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={t('cases.saveToCaseTitle')} onClick={() => setPendingSave(null)}>
+          <div className="modal card" onClick={(event) => event.stopPropagation()}>
+            <div className="card-head">
+              <IconFolder size={16} />
+              <h2>{t('cases.saveToCaseTitle')}</h2>
+            </div>
+            <div className="field">
+              <label>{t('cases.card')}</label>
+              <select className="input" value={saveTarget} onChange={(event) => setSaveTarget(event.target.value)}>
+                {cases.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title || t('cases.untitled')}
+                  </option>
+                ))}
+                <option value="__new">{t('cases.saveToNew')}</option>
+              </select>
+            </div>
+            <div className="row" style={{ justifyContent: 'flex-end' }}>
+              <button className="btn ghost sm" onClick={() => setPendingSave(null)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn primary sm" onClick={confirmSaveToCase}>
+                {t('cases.save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

@@ -27,15 +27,25 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
   const t = useT();
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
+  const countRef = useRef(0);
 
   useEffect(() => {
+    const area = scrollRef.current;
+    if (!area) return;
     const isDemo = messages.some((message) => message.id.startsWith('demo'));
     if (isDemo) {
-      scrollRef.current?.scrollTo({ top: 0 });
+      countRef.current = messages.length;
+      area.scrollTo({ top: 0 });
       return;
     }
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    if (messages.length !== countRef.current) {
+      countRef.current = messages.length;
+      endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+      return;
+    }
+    area.scrollTop = area.scrollHeight;
   }, [messages]);
 
   const submit = () => {
@@ -60,7 +70,7 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
               {quickKeys.map((item) => (
                 <button key={item.title} className="quick-card" onClick={() => onSend(t(item.text))}>
                   <b>{t(item.title)}</b>
-                  <span>{t(item.text).slice(0, 96)}…</span>
+                  <span>{t(item.text)}</span>
                 </button>
               ))}
             </div>
@@ -124,6 +134,7 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
             </div>
           ))
         )}
+        <div ref={endRef} />
       </div>
 
       <div className="composer">

@@ -27,11 +27,18 @@ export default function LawsView({ countries, counts, total, country, onCountry,
     let cancelled = false;
     setOpenId(null);
     setActiveCode('ALL');
-    api.lawsCountry(country).then((data) => {
-      if (cancelled) return;
-      setArticles(data.articles);
-      setCodes(data.codes);
-    });
+    api
+      .lawsCountry(country)
+      .then((data) => {
+        if (cancelled) return;
+        setArticles(data.articles);
+        setCodes(data.codes);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setArticles([]);
+        setCodes([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -44,7 +51,10 @@ export default function LawsView({ countries, counts, total, country, onCountry,
       return;
     }
     const timer = setTimeout(() => {
-      api.lawsSearch({ query: value, country: 'ALL' }).then(setResults);
+      api
+        .lawsSearch({ query: value, country: 'ALL' })
+        .then(setResults)
+        .catch(() => setResults([]));
     }, 220);
     return () => clearTimeout(timer);
   }, [query]);
@@ -56,13 +66,24 @@ export default function LawsView({ countries, counts, total, country, onCountry,
   }, [results, activeCode, articles]);
 
   const importPack = async () => {
-    const result = await api.lawsImport();
-    if (result.imported > 0) {
-      setImported(t('laws.imported', { n: result.imported }));
-      const data = await api.lawsCountry(country);
-      setArticles(data.articles);
-      setCodes(data.codes);
-      setTimeout(() => setImported(null), 4000);
+    try {
+      const result = await api.lawsImport();
+      if (result.canceled) return;
+      if (result.imported > 0) {
+        setImported(t('laws.imported', { n: result.imported }));
+        const data = await api.lawsCountry(country);
+        setArticles(data.articles);
+        setCodes(data.codes);
+        setTimeout(() => setImported(null), 4000);
+        return;
+      }
+      if ((result.failed ?? 0) > 0) {
+        setImported(t('laws.importFailed', { n: result.failed ?? 0 }));
+        setTimeout(() => setImported(null), 6000);
+      }
+    } catch (error) {
+      setImported(t('laws.importError', { error: error instanceof Error ? error.message : String(error) }));
+      setTimeout(() => setImported(null), 6000);
     }
   };
 
@@ -112,7 +133,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
       <div className="law-pane">
         <div className="law-head">
           <div className="law-title">
-            <span className="flag-code">{results ? 'ALL' : current?.code ?? '—'}</span>
+            <span className="flag-code">{results ? t('laws.allBadge') : current?.code ?? '—'}</span>
             <div>
               <h2>{results ? t('laws.searchResults') : countryLabel(country, current?.name, lang) || t('laws.laws')}</h2>
               <div className="sys">{results ? t('laws.query', { q: query }) : current?.system}</div>
@@ -143,7 +164,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
             const flag = article.country;
             return (
               <div key={article.id} className={`article ${open ? 'open' : ''}`}>
-                <button className="article-head" onClick={() => setOpenId(open ? null : article.id)}>
+                <button className="article-head" onClick={() => setOpenId(open ? null : article.id)} aria-expanded={open}>
                   <span className="article-num">{article.number}</span>
                   <span className="article-main">
                     <span className="article-title">{article.title}</span>

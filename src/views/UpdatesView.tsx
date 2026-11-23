@@ -32,21 +32,37 @@ export default function UpdatesView({ info, settings, update, setUpdate }: Props
   });
 
   useEffect(() => {
-    api.localVersions().then(setVersions);
-    api.remoteVersions().then(setRemote);
+    api.localVersions().then(setVersions).catch(() => setVersions([]));
+    api.remoteVersions().then(setRemote).catch(() => setRemote({ ok: false, items: [] }));
   }, []);
 
   const check = async () => {
     setUpdate({ stage: 'checking', message: t('updates.stageChecking') });
-    const status = await api.checkUpdate();
-    setUpdate(status);
-    api.remoteVersions().then(setRemote);
+    try {
+      const status = await api.checkUpdate();
+      setUpdate(status);
+      api.remoteVersions().then(setRemote).catch(() => undefined);
+    } catch (error) {
+      setUpdate({
+        stage: 'error',
+        message: t('updates.checkFailed', { error: error instanceof Error ? error.message : String(error) })
+      });
+    }
   };
 
   const download = async () => {
-    const status = await api.downloadUpdate();
-    setUpdate(status);
+    try {
+      const status = await api.downloadUpdate();
+      setUpdate(status);
+    } catch (error) {
+      setUpdate({
+        stage: 'error',
+        message: t('updates.downloadFailed', { error: error instanceof Error ? error.message : String(error) })
+      });
+    }
   };
+
+  const channelLabel = settings.channel === 'beta' ? t('updates.channelBeta') : t('updates.channelStable');
 
   const version = info?.version ?? '1.0.0';
 
@@ -58,7 +74,7 @@ export default function UpdatesView({ info, settings, update, setUpdate }: Props
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <span className="badge"><IconSpark size={11} /> {t('app.brand')}</span>
               <span className={`badge ${update.stage === 'error' ? 'err' : update.stage === 'available' || update.stage === 'ready' ? 'ok' : ''}`}>
-                {t('updates.channel', { channel: settings.channel })}
+                {t('updates.channel', { channel: channelLabel })}
               </span>
             </div>
             <div className="ver" style={{ marginTop: 14 }}>
@@ -67,7 +83,7 @@ export default function UpdatesView({ info, settings, update, setUpdate }: Props
             <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>
               {t(stageKeys[update.stage])}
               {update.version && update.stage === 'available' ? ` — ${update.version}` : ''}
-              {update.message && (update.stage === 'dev' || update.stage === 'idle') ? ` — ${update.message}` : ''}
+              {update.message && update.stage !== 'checking' && update.stage !== 'available' ? ` — ${update.message}` : ''}
             </div>
             {update.stage === 'downloading' && (
               <div className="progress">
@@ -108,12 +124,12 @@ export default function UpdatesView({ info, settings, update, setUpdate }: Props
             </div>
             <div className="artifacts">
               <div className="artifact">
-                <div className="k">portable exe</div>
+                <div className="k">{t('updates.artifactExe')}</div>
                 <div className="n">nexus-lawyer-{version}-portable.exe</div>
                 <div className="s">{t('updates.portableExe')}</div>
               </div>
               <div className="artifact">
-                <div className="k">portable zip</div>
+                <div className="k">{t('updates.artifactZip')}</div>
                 <div className="n">nexus-lawyer-{version}-portable.zip</div>
                 <div className="s">{t('updates.portableZip')}</div>
               </div>
@@ -142,7 +158,7 @@ export default function UpdatesView({ info, settings, update, setUpdate }: Props
                     <div>
                       <div className="row" style={{ gap: 8 }}>
                         <b style={{ fontSize: 13, fontWeight: 550 }}>{release.name}</b>
-                        {release.prerelease && <span className="badge warn">beta</span>}
+                        {release.prerelease && <span className="badge warn">{t('updates.beta')}</span>}
                       </div>
                       <div className="tiny dim" style={{ marginTop: 4 }}>{release.assets.map((asset) => asset.name).join(' · ') || t('updates.noAssets')}</div>
                     </div>
@@ -170,7 +186,7 @@ export default function UpdatesView({ info, settings, update, setUpdate }: Props
               <div className="release" key={entry.version}>
                 <div>
                   <div className="tag">{entry.version}</div>
-                  <div className="date">{entry.date}</div>
+                  <div className="date">{formatDate(entry.date, lang)}</div>
                 </div>
                 <div>
                   <div className="row" style={{ gap: 8 }}>
