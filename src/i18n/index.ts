@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { ru, demoRu } from './ru';
-import { en, demoEn, countryNamesEn } from './en';
+import { en, demoEn, countryNamesEn, regionNamesEn, countryMetaEn } from './en';
 
 export type Lang = 'ru' | 'en';
 export type TKey = keyof typeof ru;
@@ -107,6 +107,20 @@ export function formatDateTime(value: string | number | Date, lang: Lang, option
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleString(uiLocale(lang), options);
+}
+
+export function regionLabel(region: string | undefined, lang: Lang) {
+  if (!region) return '';
+  if (lang === 'en') return regionNamesEn[region] ?? region;
+  return region;
+}
+
+export function countryMeta(code: string, lang: Lang, system?: string, note?: string) {
+  if (lang === 'en') {
+    const tr = countryMetaEn[code];
+    if (tr) return tr;
+  }
+  return { system: system ?? '', note: note ?? '' };
 }
 
 export function countryLabel(code: string, fallback: string | undefined, lang: Lang) {

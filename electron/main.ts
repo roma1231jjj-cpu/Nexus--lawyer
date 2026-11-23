@@ -74,19 +74,25 @@ async function runScreenshots() {
   const dir = isDev ? path.join(process.cwd(), 'screenshots') : path.join(app.getPath('userData'), 'screenshots');
   fs.mkdirSync(dir, { recursive: true });
 
-  const shots: { theme: string; view: string; file: string }[] = [
-    { theme: 'midnight', view: 'chat', file: '01-chat-midnight.png' },
-    { theme: 'ivory', view: 'laws', file: '02-laws-ivory.png' },
-    { theme: 'aurum', view: 'documents', file: '03-documents-aurum.png' },
-    { theme: 'midnight', view: 'cases', file: '04-cases-midnight.png' },
-    { theme: 'ivory', view: 'updates', file: '05-versions-ivory.png' }
+  const shots: { theme: string; view: string; lang: string; file: string }[] = [
+    { theme: 'midnight', view: 'chat', lang: 'en', file: 'en-midnight.png' },
+    { theme: 'ivory', view: 'laws', lang: 'en', file: 'en-ivory.png' },
+    { theme: 'aurum', view: 'documents', lang: 'en', file: 'en-aurum.png' },
+    { theme: 'ivory', view: 'chat', lang: 'en', file: 'en-chat.png' },
+    { theme: 'midnight', view: 'settings', lang: 'en', file: 'en-settings.png' },
+    { theme: 'midnight', view: 'documents', lang: 'en', file: 'en-docs.png' },
+    { theme: 'midnight', view: 'chat', lang: 'ru', file: 'ru-chat.png' },
+    { theme: 'ivory', view: 'documents', lang: 'ru', file: 'ru-docs.png' },
+    { theme: 'aurum', view: 'settings', lang: 'ru', file: 'ru-settings.png' }
   ];
 
   await new Promise((resolve) => setTimeout(resolve, 1500));
 
   for (const shot of shots) {
-    await win?.webContents.executeJavaScript(`window.__nexusShots && window.__nexusShots.set('${shot.theme}','${shot.view}')`);
-    await new Promise((resolve) => setTimeout(resolve, 1300));
+    await win?.webContents.executeJavaScript(
+      `window.__nexusShots && window.__nexusShots.set('${shot.theme}','${shot.view}','${shot.lang}')`
+    );
+    await new Promise((resolve) => setTimeout(resolve, 1700));
     const image = await win!.webContents.capturePage();
     fs.writeFileSync(path.join(dir, shot.file), image.toPNG());
   }

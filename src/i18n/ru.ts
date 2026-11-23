@@ -9,7 +9,7 @@ export const ru = {
   'app.inBase': '{n} в базе',
   'app.caseTitle': 'Консультация {date}',
   'app.buildPortable': 'portable / установщик',
-  'app.buildDev': 'dev',
+  'app.buildDev': 'сборка из исходников',
 
   'common.cancel': 'Отмена',
 

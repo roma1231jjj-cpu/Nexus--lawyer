@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, type Article, type Country } from '../api';
 import { IconArrow, IconDownload, IconSearch, IconSpark } from '../components/Icons';
-import { countryLabel, useLang, useT } from '../i18n';
+import { countryLabel, countryMeta, useLang, useT, regionLabel } from '../i18n';
 
 type Props = {
   countries: Country[];
@@ -60,6 +60,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
   }, [query]);
 
   const current = countries.find((item) => item.code === country);
+  const meta = countryMeta(country, lang, current?.system, current?.note);
   const list = useMemo(() => {
     if (results) return results.map((hit) => hit.article);
     return activeCode === 'ALL' ? articles : articles.filter((article) => article.code === activeCode);
@@ -115,7 +116,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
                 <span className="country-flag">{item.code}</span>
                 <span>
                   <span className="country-name">{countryLabel(item.code, item.name, lang)}</span>
-                  <span className="country-region">{item.region}</span>
+                  <span className="country-region">{regionLabel(item.region, lang)}</span>
                 </span>
                 <span className="country-count num">{stat?.count ?? 0}</span>
               </button>
@@ -136,7 +137,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
             <span className="flag-code">{results ? t('laws.allBadge') : current?.code ?? '—'}</span>
             <div>
               <h2>{results ? t('laws.searchResults') : countryLabel(country, current?.name, lang) || t('laws.laws')}</h2>
-              <div className="sys">{results ? t('laws.query', { q: query }) : current?.system}</div>
+              <div className="sys">{results ? t('laws.query', { q: query }) : meta.system}</div>
             </div>
             <span className="badge" style={{ marginLeft: 'auto' }}>{t('laws.articles', { n: list.length })}</span>
           </div>
@@ -152,7 +153,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
               ))}
             </div>
           )}
-          {!results && current?.note && <div className="hint-line">{current.note}</div>}
+          {!results && meta.note && <div className="hint-line">{meta.note}</div>}
         </div>
 
         <div className="article-list">

@@ -13,7 +13,7 @@ export const en: Dict = {
   'app.inBase': '{n} in the database',
   'app.caseTitle': 'Consultation {date}',
   'app.buildPortable': 'portable / installer',
-  'app.buildDev': 'dev',
+  'app.buildDev': 'dev build',
 
   'common.cancel': 'Cancel',
 
@@ -245,4 +245,34 @@ export const countryNamesEn: Record<string, string> = {
   JP: 'Japan',
   AE: 'UAE',
   IN: 'India'
+};
+
+export const regionNamesEn: Record<string, string> = {
+  'СНГ': 'CIS',
+  'Европа': 'Europe',
+  'Азия': 'Asia',
+  'Ближний Восток': 'Middle East',
+  'Северная Америка': 'North America',
+  'Латинская Америка': 'Latin America',
+  'Африка': 'Africa',
+  'Океания': 'Oceania'
+};
+
+export const countryMetaEn: Record<string, { system: string; note: string }> = {
+  DE: { system: 'Civil law, codified (BGB, StGB, ZPO)', note: 'Regular contractual claims lapse in 3 years (§195 BGB), 10 years maximum (§199).' },
+  FR: { system: 'Civil law, Code civil, separate administrative courts', note: 'Contractual limitation is 5 years (art. 2224 Code civil), 10 years for personal injury and pledges (art. 2227).' },
+  US: { system: 'Common law, federal law plus state statutes (UCC)', note: 'Limitation periods and family law are set by each state. Commerce — Uniform Commercial Code where adopted.' },
+  GB: { system: 'Common law, parliamentary statutes, judicial precedent', note: 'Limitation Act 1980: 6 years for contract, 6 years for tort, 12 years for a deed.' },
+  IT: { system: 'Civil law, Codice civile 1942', note: 'Contractual limitation is 10 years (art. 2946), 2 or 5 years for specific claims.' },
+  ES: { system: 'Civil law, Código Civil', note: 'Personal claims lapse in 5 years (art. 1964), real estate in 30 years, consumer claims in 3 years.' },
+  PL: { system: 'Civil law, Kodeks cywilny', note: 'Contractual claims — 3 years (art. 118 KC), real estate — 6, safety claims — 20 years.' },
+  TR: { system: 'Civil law, Türk Medeni Kanunu, a mix of Swiss and German law', note: 'Contractual limitation is 10 years (TBK m. 146), torts — 2 years from knowledge, 10 years maximum.' },
+  KZ: { system: 'Civil law, Civil Code of Kazakhstan, EAEU member', note: 'General limitation period is 3 years (art. 178 of the Civil Code).' },
+  BY: { system: 'Civil law, Civil Code of Belarus, EAEU member', note: 'General limitation period is 3 years (art. 197 of the Civil Code).' },
+  UA: { system: 'Civil law, Civil Code of Ukraine', note: 'General limitation period is 3 years (art. 257), a shortened one year period applies in some cases (art. 258).' },
+  CN: { system: 'Civil law with socialist characteristics, Civil Code of the PRC 2021', note: 'General limitation period is 3 years (art. 188), 20 years maximum.' },
+  JP: { system: 'Civil law model, Minpō (Civil Code), strong US influence in commerce', note: 'Contractual claims lapse in 5 years from the moment of knowledge (art. 166 after the 2020 reform).' },
+  AE: { system: 'Islamic and civil law, Civil Transactions Law, free zones with their own courts', note: 'Contractual limitation is 15 years (art. 473), commercial disputes — 10 years; DIFC/DMCC follow English law.' },
+  IN: { system: 'Common law, Indian Contract Act 1872, Limitation Act 1963', note: 'Contractual claims — 3 years from the breach, enforcement of a court decision — 12 years.' },
+  RU: { system: 'Civil law (Romano-Germanic), the Constitution is the main act', note: 'Check the current wording at pravo.gov.ru: amendments come almost every week.' }
 };
