@@ -5,7 +5,7 @@ type Dict = Record<keyof typeof ru, string>;
 export const en: Dict = {
   'app.name': 'Nexus-Lawyer',
   'app.title': 'Nexus-Lawyer',
-  'app.brand': 'Nexus × АутSquad',
+  'app.brand': 'Nexus × AutSquad',
   'app.loading': 'Loading the law database…',
   'app.footerTitle': 'Reference excerpt.',
   'app.footerNote': 'Always check the current wording of a norm. This app does not replace a lawyer.',
@@ -173,7 +173,7 @@ export const en: Dict = {
   'settings.language': 'Interface language',
   'settings.languageHint': 'Switches instantly and is kept for the next launch.',
   'settings.answerLanguage': 'Answer language',
-  'settings.ru': 'Русский',
+  'settings.ru': 'Russian',
   'settings.en': 'English',
   'settings.de': 'Deutsch',
   'settings.defaultCountry': 'Default governing law',
