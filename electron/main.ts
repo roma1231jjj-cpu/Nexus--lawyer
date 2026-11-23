@@ -6,6 +6,7 @@ import { createLaws, type Article } from './laws';
 import { buildSources, buildSystemPrompt, listModels, offlineAnswer, streamChat, type ChatMessage } from './ai';
 import { templates, fillTemplate } from './docs';
 import { createUpdater, REPO, type UpdateStatus } from './updater';
+import { resolveLang, tr } from './i18n';
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 const shotsArg = process.argv.find((arg) => arg.startsWith('--shots'));
@@ -19,8 +20,11 @@ let laws = createLaws(
 let updater = createUpdater(
   (status) => win?.webContents.send('update:status', status),
   () => store.getSettings().feedUrl,
-  () => store.getSettings().channel
+  () => store.getSettings().channel,
+  () => resolveLang(store.getSettings().language)
 );
+
+const trNow = (key: Parameters<typeof tr>[1], vars?: Record<string, string | number>) => tr(resolveLang(store.getSettings().language), key, vars);
 
 const send = (channel: string, payload: unknown) => win?.webContents.send(channel, payload);
 
@@ -142,7 +146,7 @@ function registerIpc() {
     streams.delete(payload.requestId);
 
     if (result.error || !result.text.trim()) {
-      return { text: offlineAnswer(payload.query, sources, countryName), sources, error: result.error, mode: 'offline' };
+      return { text: offlineAnswer(payload.query, sources, countryName, settings.language), sources, error: result.error, mode: 'offline' };
     }
     return { text: result.text, sources, mode: 'ai' };
   });
@@ -165,8 +169,8 @@ function registerIpc() {
   }));
   ipcMain.handle('laws:import', async () => {
     const result = await dialog.showOpenDialog(win!, {
-      title: 'Импорт пакета законов',
-      filters: [{ name: 'Пакет законов', extensions: ['json'] }],
+      title: trNow('dialog.importTitle'),
+      filters: [{ name: trNow('dialog.importFilter'), extensions: ['json'] }],
       properties: ['openFile', 'multiSelections']
     });
     if (result.canceled) return { imported: 0 };
@@ -180,7 +184,7 @@ function registerIpc() {
         fs.writeFileSync(path.join(dir, `${Date.now()}-${name}`), JSON.stringify(pack, null, 2));
         imported += (pack.articles ?? []).length;
       } catch {
-        /* игнорируем битый файл */
+        continue;
       }
     }
     laws.reload();
@@ -202,7 +206,7 @@ function registerIpc() {
     return true;
   });
   ipcMain.handle('cases:attach', async (_event, id: string) => {
-    const result = await dialog.showOpenDialog(win!, { title: 'Добавить файл в дело', properties: ['openFile', 'multiSelections'] });
+    const result = await dialog.showOpenDialog(win!, { title: trNow('dialog.attachTitle'), properties: ['openFile', 'multiSelections'] });
     if (result.canceled) return { files: readCases().find((entry) => entry.id === id)?.files ?? [] };
     const dir = path.join(app.getPath('userData'), 'cases', id);
     fs.mkdirSync(dir, { recursive: true });
@@ -229,7 +233,7 @@ function registerIpc() {
   ipcMain.handle('docs:export', async (_event, payload: { name: string; text: string; format: 'txt' | 'md' | 'doc' }) => {
     const ext = payload.format;
     const result = await dialog.showSaveDialog(win!, {
-      title: 'Сохранить документ',
+      title: trNow('dialog.saveDocTitle'),
       defaultPath: `${payload.name}.${ext}`,
       filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
     });

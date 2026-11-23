@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, type Article, type Country } from '../api';
 import { IconArrow, IconDownload, IconSearch, IconSpark } from '../components/Icons';
+import { countryLabel, useLang, useT } from '../i18n';
 
 type Props = {
   countries: Country[];
@@ -12,6 +13,8 @@ type Props = {
 };
 
 export default function LawsView({ countries, counts, total, country, onCountry, onAsk }: Props) {
+  const t = useT();
+  const lang = useLang();
   const [articles, setArticles] = useState<Article[]>([]);
   const [codes, setCodes] = useState<{ code: string; short: string; count: number }[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -55,7 +58,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
   const importPack = async () => {
     const result = await api.lawsImport();
     if (result.imported > 0) {
-      setImported(`Добавлено норм: ${result.imported}`);
+      setImported(t('laws.imported', { n: result.imported }));
       const data = await api.lawsCountry(country);
       setArticles(data.articles);
       setCodes(data.codes);
@@ -69,11 +72,11 @@ export default function LawsView({ countries, counts, total, country, onCountry,
         <div className="side-panel-head">
           <div className="search">
             <IconSearch size={14} />
-            <input className="input" placeholder="Поиск по всем нормам" value={query} onChange={(event) => setQuery(event.target.value)} />
+            <input className="input" placeholder={t('laws.search')} value={query} onChange={(event) => setQuery(event.target.value)} />
           </div>
           <div className="row tiny dim" style={{ justifyContent: 'space-between' }}>
-            <span>{total.countries} стран</span>
-            <span className="num">{total.articles} норм</span>
+            <span>{t('laws.countries', { n: total.countries })}</span>
+            <span className="num">{t('laws.articles', { n: total.articles })}</span>
           </div>
         </div>
         <div className="side-panel-body">
@@ -90,7 +93,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
               >
                 <span className="country-flag">{item.code}</span>
                 <span>
-                  <span className="country-name">{item.name}</span>
+                  <span className="country-name">{countryLabel(item.code, item.name, lang)}</span>
                   <span className="country-region">{item.region}</span>
                 </span>
                 <span className="country-count num">{stat?.count ?? 0}</span>
@@ -99,7 +102,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
           })}
           <div style={{ padding: '10px 6px 4px' }}>
             <button className="btn ghost sm" style={{ width: '100%' }} onClick={importPack}>
-              <IconDownload size={13} /> Импорт пакета
+              <IconDownload size={13} /> {t('laws.import')}
             </button>
             {imported && <div className="hint-line">{imported}</div>}
           </div>
@@ -111,15 +114,15 @@ export default function LawsView({ countries, counts, total, country, onCountry,
           <div className="law-title">
             <span className="flag-code">{results ? 'ALL' : current?.code ?? '—'}</span>
             <div>
-              <h2>{results ? 'Результаты поиска' : current?.name ?? 'Законы'}</h2>
-              <div className="sys">{results ? `по запросу «${query}»` : current?.system}</div>
+              <h2>{results ? t('laws.searchResults') : countryLabel(country, current?.name, lang) || t('laws.laws')}</h2>
+              <div className="sys">{results ? t('laws.query', { q: query }) : current?.system}</div>
             </div>
-            <span className="badge" style={{ marginLeft: 'auto' }}>{list.length} норм</span>
+            <span className="badge" style={{ marginLeft: 'auto' }}>{t('laws.articles', { n: list.length })}</span>
           </div>
           {!results && (
             <div className="code-tabs">
               <button className={`tab ${activeCode === 'ALL' ? 'active' : ''}`} onClick={() => setActiveCode('ALL')}>
-                Все ({articles.length})
+                {t('laws.all', { n: articles.length })}
               </button>
               {codes.map((code) => (
                 <button key={code.code} className={`tab ${activeCode === code.code ? 'active' : ''}`} onClick={() => setActiveCode(code.code)}>
@@ -133,9 +136,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
 
         <div className="article-list">
           {list.length === 0 && (
-            <div className="empty">
-              {results ? 'Ничего не найдено. Попробуйте другой запрос или номер статьи.' : 'В этом разделе пока нет норм — импортируйте свой пакет.'}
-            </div>
+            <div className="empty">{results ? t('laws.notFound') : t('laws.emptyCountry')}</div>
           )}
           {list.map((article) => {
             const open = openId === article.id;
@@ -164,12 +165,14 @@ export default function LawsView({ countries, counts, total, country, onCountry,
                     <div className="actions">
                       <button
                         className="btn sm"
-                        onClick={() => onAsk(`Объясни простыми словами ${article.code}, ${article.number} «${article.title}» и как это применить на практике.`)}
+                        onClick={() =>
+                          onAsk(t('laws.askPrompt', { code: article.code, number: article.number, title: article.title }))
+                        }
                       >
-                        <IconSpark size={13} /> Спросить ИИ по статье
+                        <IconSpark size={13} /> {t('laws.askAi')}
                       </button>
                       <button className="btn ghost sm" onClick={() => navigator.clipboard?.writeText(`${article.code}, ${article.number}. ${article.title}\n\n${article.text}`)}>
-                        копировать норму
+                        {t('laws.copy')}
                       </button>
                     </div>
                   </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '../api';
 import { Rich } from '../components/Rich';
 import { IconCopy, IconDoc, IconFolder, IconScales, IconSend, IconSettings, IconSpark, IconStop, Logo } from '../components/Icons';
+import { useT } from '../i18n';
 
 type Props = {
   messages: ChatMessage[];
@@ -15,14 +16,15 @@ type Props = {
   model: string;
 };
 
-const quick = [
-  { title: 'Вернули товар с браком', text: 'Купил телефон, через 3 недели перестал заряжаться. Магазин отказывает в возврате, ссылается на «технически сложный товар». Что делать и на что ссылаться?' },
-  { title: 'Задержали зарплату', text: 'Работодатель задерживает зарплату на 45 дней, договор официальный. Какие компенсации я могу требовать и куда жаловаться?' },
-  { title: 'Аренда и депозит', text: 'Арендодатель не возвращает депозит после выезда, квартиру принял без замечаний. Как взыскать и какие нормы применить?' },
-  { title: 'Сосед залил квартиру', text: 'Сосед сверху залил кухню, акт о заливе есть. Как правильно оформить требование о возмещении ремонта и морального вреда?' }
-];
+const quickKeys = [
+  { title: 'chat.quick1Title', text: 'chat.quick1Text' },
+  { title: 'chat.quick2Title', text: 'chat.quick2Text' },
+  { title: 'chat.quick3Title', text: 'chat.quick3Text' },
+  { title: 'chat.quick4Title', text: 'chat.quick4Text' }
+] as const;
 
 export default function ChatView({ messages, busy, onSend, onStop, onClear, onSaveToCase, onOpenSettings, countryName, model }: Props) {
+  const t = useT();
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
@@ -48,19 +50,17 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
       <div className="chat-scroll" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="chat-empty">
-            <span className="badge"><IconSpark size={11} /> правовой помощник</span>
+            <span className="badge"><IconSpark size={11} /> {t('chat.badge')}</span>
             <h2>
-              Разберите ситуацию <span>по нормам</span>, а не по слухам
+              {t('chat.heroA')} <span>{t('chat.heroAccent')}</span>
+              {t('chat.heroB')}
             </h2>
-            <p>
-              Опишите, что произошло: кто, когда, какие документы есть. Ответ придёт со ссылками на статьи из локальной базы
-              {' '}— Конституция, ГК, ТК, УК, КоАП, процессуальные кодексы и законы 15 стран.
-            </p>
+            <p>{t('chat.heroText')}</p>
             <div className="quick-grid">
-              {quick.map((item) => (
-                <button key={item.title} className="quick-card" onClick={() => onSend(item.text)}>
-                  <b>{item.title}</b>
-                  <span>{item.text.slice(0, 96)}…</span>
+              {quickKeys.map((item) => (
+                <button key={item.title} className="quick-card" onClick={() => onSend(t(item.text))}>
+                  <b>{t(item.title)}</b>
+                  <span>{t(item.text).slice(0, 96)}…</span>
                 </button>
               ))}
             </div>
@@ -68,12 +68,12 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
         ) : (
           messages.map((message) => (
             <div key={message.id} className={`msg ${message.role}`}>
-              <div className="avatar">{message.role === 'assistant' ? <Logo size={20} /> : 'Я'}</div>
+              <div className="avatar">{message.role === 'assistant' ? <Logo size={20} /> : t('chat.me')}</div>
               <div style={{ minWidth: 0 }}>
                 <div className="bubble">
                   {message.pending && !message.text ? (
                     <span className="dim">
-                      Анализирую нормы… <span className="caret" />
+                      {t('chat.thinking')} <span className="caret" />
                     </span>
                   ) : message.role === 'assistant' ? (
                     <Rich text={message.text} />
@@ -84,7 +84,7 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
 
                   {message.sources && message.sources.length > 0 && (
                     <div className="sources">
-                      <div className="sources-title">Нормы в ответе</div>
+                      <div className="sources-title">{t('chat.sources')}</div>
                       {message.sources.map((source, index) => (
                         <div className="source-row" key={source.id}>
                           <span className="source-idx">[{index + 1}]</span>
@@ -98,7 +98,7 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
 
                   {message.error && (
                     <div className="hint-line" style={{ marginTop: 10 }}>
-                      Модель недоступна: {message.error}. Ответ собран по базе.
+                      {t('chat.modelError', { error: message.error })}
                     </div>
                   )}
                 </div>
@@ -106,16 +106,16 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
                 <div className="msg-foot">
                   {message.role === 'assistant' && message.mode && (
                     <span className={`badge ${message.mode === 'ai' ? 'ok' : 'warn'}`}>
-                      {message.mode === 'ai' ? 'ИИ + база' : 'справочный режим'}
+                      {message.mode === 'ai' ? t('chat.modeAi') : t('chat.modeOffline')}
                     </span>
                   )}
                   <div className="msg-actions">
                     <button className="mini-btn" onClick={() => navigator.clipboard?.writeText(message.text)}>
-                      <IconCopy size={13} /> копировать
+                      <IconCopy size={13} /> {t('chat.copy')}
                     </button>
                     {message.role === 'assistant' && (
                       <button className="mini-btn" onClick={() => onSaveToCase(message)}>
-                        <IconFolder size={13} /> в дело
+                        <IconFolder size={13} /> {t('chat.saveToCase')}
                       </button>
                     )}
                   </div>
@@ -131,7 +131,7 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
           <textarea
             ref={areaRef}
             value={draft}
-            placeholder="Опишите ситуацию: что случилось, какие документы есть, чего хотите добиться…"
+            placeholder={t('chat.placeholder')}
             onChange={(event) => {
               setDraft(event.target.value);
               event.target.style.height = 'auto';
@@ -146,23 +146,23 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
           />
           <div className="composer-row">
             <button className="chip" onClick={onOpenSettings}>
-              <IconSettings size={12} /> {model || 'модель'}
+              <IconSettings size={12} /> {model || t('app.noModel')}
             </button>
             <button className="chip" onClick={onOpenSettings}>
               <IconScales size={12} /> {countryName}
             </button>
             {messages.length > 0 && (
               <button className="mini-btn" onClick={onClear}>
-                очистить
+                {t('chat.clear')}
               </button>
             )}
             <span className="spacer" />
             {busy ? (
-              <button className="send-btn" onClick={onStop} title="Остановить">
+              <button className="send-btn" onClick={onStop} title={t('chat.stop')}>
                 <IconStop size={16} />
               </button>
             ) : (
-              <button className="send-btn" onClick={submit} disabled={!draft.trim()} title="Отправить">
+              <button className="send-btn" onClick={submit} disabled={!draft.trim()} title={t('chat.send')}>
                 <IconSend size={16} />
               </button>
             )}
@@ -170,7 +170,7 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
         </div>
         <div className="hint-line" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <IconDoc size={12} />
-          Ответ справочный: сверяйте редакцию нормы и проверяйте сроки. Enter — отправить, Shift+Enter — перенос строки.
+          {t('chat.hint')}
         </div>
       </div>
     </div>

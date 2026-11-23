@@ -1,5 +1,6 @@
 import { app } from 'electron';
 import { autoUpdater } from 'electron-updater';
+import { tr, type Lang } from './i18n';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -14,9 +15,11 @@ export type UpdateStatus = {
 
 export const REPO = { owner: 'roma1231jjj-cpu', repo: 'Nexus--lawyer' };
 
-export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () => string, channel: () => 'stable' | 'beta') {
+export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () => string, channel: () => 'stable' | 'beta', lang: () => Lang) {
   let status: UpdateStatus = { stage: 'idle' };
   let silent = false;
+
+  const localize = (key: Parameters<typeof tr>[1], vars?: Record<string, string | number>) => tr(lang(), key, vars);
 
   const push = (next: Partial<UpdateStatus>) => {
     status = { ...status, ...next };
@@ -38,23 +41,21 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
     autoUpdater.allowPrerelease = channel() === 'beta';
   };
 
-  autoUpdater.on('checking-for-update', () => push({ stage: 'checking', message: 'Проверяю релизы…' }));
+  autoUpdater.on('checking-for-update', () => push({ stage: 'checking', message: localize('idle.checking') }));
   autoUpdater.on('update-available', (info) =>
     push({ stage: 'available', version: info.version, notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : '', releaseDate: info.releaseDate })
   );
-  autoUpdater.on('update-not-available', (info) => push({ stage: 'none', version: info.version, message: 'Версия актуальна' }));
+  autoUpdater.on('update-not-available', (info) => push({ stage: 'none', version: info.version, message: localize('idle.actual') }));
   autoUpdater.on('download-progress', (progress) => push({ stage: 'downloading', percent: Math.round(progress.percent) }));
-  autoUpdater.on('update-downloaded', (info) => push({ stage: 'ready', version: info.version, message: 'Обновление скачано' }));
+  autoUpdater.on('update-downloaded', (info) => push({ stage: 'ready', version: info.version, message: localize('idle.downloaded') }));
   autoUpdater.on('error', (error) => {
-    const message = /No published versions|404/i.test(error.message)
-      ? 'на GitHub пока нет опубликованных релизов'
-      : error.message;
+    const message = /No published versions|404/i.test(error.message) ? localize('idle.noReleasesShort') : error.message;
     if (/No published versions|404/i.test(error.message)) {
-      push({ stage: 'none', message: 'Релизов на GitHub пока нет — обновления появятся после первой публикации' });
+      push({ stage: 'none', message: localize('idle.noReleases') });
       return;
     }
     if (silent) {
-      push({ stage: 'idle', message: `тихая проверка не удалась: ${message}` });
+      push({ stage: 'idle', message: localize('idle.silentFailed', { error: message }) });
       return;
     }
     push({ stage: 'error', message });
@@ -65,14 +66,14 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
     async check() {
       silent = false;
       if (!app.isPackaged) {
-        push({ stage: 'dev', message: `Проверка обновлений доступна в собранной версии. Текущая: ${app.getVersion()}` });
+        push({ stage: 'dev', message: localize('idle.dev', { version: app.getVersion() }) });
         return status;
       }
       try {
         configure();
         await autoUpdater.checkForUpdates();
       } catch (error) {
-        push({ stage: 'error', message: error instanceof Error ? error.message : 'Ошибка проверки' });
+        push({ stage: 'error', message: error instanceof Error ? error.message : localize('idle.checkError') });
       }
       return status;
     },
@@ -83,10 +84,10 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
         configure();
         await autoUpdater.checkForUpdates();
       } catch (error) {
-        const raw = error instanceof Error ? error.message : 'нет сети';
+        const raw = error instanceof Error ? error.message : localize('idle.noNetwork');
         push({
           stage: 'idle',
-          message: /No published versions|404/i.test(raw) ? 'релизов на GitHub пока нет' : `тихая проверка не удалась: ${raw}`
+          message: /No published versions|404/i.test(raw) ? localize('idle.noReleasesShort2') : localize('idle.silentFailed', { error: raw })
         });
       } finally {
         silent = false;
@@ -97,7 +98,7 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
       try {
         await autoUpdater.downloadUpdate();
       } catch (error) {
-        push({ stage: 'error', message: error instanceof Error ? error.message : 'Ошибка загрузки' });
+        push({ stage: 'error', message: error instanceof Error ? error.message : localize('idle.downloadError') });
       }
       return status;
     },
@@ -114,7 +115,7 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
         try {
           return JSON.parse(fs.readFileSync(candidate, 'utf8'));
         } catch {
-          /* пробуем следующий путь */
+          continue;
         }
       }
       return [];
@@ -146,7 +147,7 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
           }))
         };
       } catch (error) {
-        return { ok: false, items: [], error: error instanceof Error ? error.message : 'Нет сети' };
+        return { ok: false, items: [], error: error instanceof Error ? error.message : localize('idle.networkError') };
       }
     }
   };

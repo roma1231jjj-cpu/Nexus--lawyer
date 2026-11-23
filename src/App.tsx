@@ -7,39 +7,37 @@ import DocsView from './views/DocsView';
 import CasesView from './views/CasesView';
 import UpdatesView from './views/UpdatesView';
 import SettingsView from './views/SettingsView';
-
-const demoConversation: ChatMessage[] = [
-  {
-    id: 'demo-user',
-    role: 'user',
-    text: 'Купил телефон за 54 990 ₽, через 3 недели перестал заряжаться. Магазин говорит, что это технически сложный товар и возврат невозможен. Что делать?'
-  },
-  {
-    id: 'demo-ai',
-    role: 'assistant',
-    mode: 'ai',
-    text: '**Короткий вывод:** отказ незаконен, если недостаток существенный или нарушены сроки ремонта. Сначала письменная претензия, 10 дней на возврат денег, затем неустойка 1% в день.\n\n**Обоснование**\n- Смартфон входит в перечень технически сложных товаров, поэтому после 15 дней возврат возможен только при существенном недостатке либо нарушении сроков устранения [1].\n- Недостаток обнаружен в течение гарантийного срока — продавец отвечает за него, если не докажет, что причина возникла после передачи товара [2].\n- Требование о возврате уплаченной суммы удовлетворяется в течение 10 дней [3], за просрочку начисляется неустойка 1% цены товара за каждый день [4].\n\n**Что делать**\n1. Подайте претензию в двух экземплярах, на своём — отметка о приёме; отказ принимать — заказное письмо с описью.\n2. Потребуйте проверку качества; при споре — независимая экспертиза, расходы взыскиваются с продавца.\n3. Через 10 дней — иск в суд по месту жительства: неустойка, штраф 50%, моральный вред.\n\nЭто справочная информация, а не юридическая помощь.',
-    sources: [
-      { id: 'ru-zpp-18', code: 'Закон о защите прав потребителей', number: 'ст. 18', title: 'Права при недостатках товара', country: 'RU', text: '' },
-      { id: 'ru-gk2-475', code: 'ГК РФ ч. 2', number: 'ст. 475', title: 'Последствия передачи товара ненадлежащего качества', country: 'RU', text: '' },
-      { id: 'ru-zpp-22', code: 'Закон о защите прав потребителей', number: 'ст. 22', title: 'Срок возврата денег', country: 'RU', text: '' },
-      { id: 'ru-zpp-23', code: 'Закон о защите прав потребителей', number: 'ст. 23', title: 'Неустойка за просрочку', country: 'RU', text: '' }
-    ]
-  }
-];
+import { countryLabel, formatDate, setLang, useDemo, useLang, useT } from './i18n';
+import type { Lang } from './i18n';
 
 export type ViewId = 'chat' | 'laws' | 'documents' | 'cases' | 'updates' | 'settings';
 
-const viewMeta: Record<ViewId, { title: string; sub: string; icon: typeof IconChat }> = {
-  chat: { title: 'Консультация', sub: 'ИИ + нормы из локальной базы', icon: IconChat },
-  laws: { title: 'Законы', sub: 'поиск по нормам всех стран', icon: IconScales },
-  documents: { title: 'Документы', sub: 'Шаблоны и выгрузка в .txt / .md / .doc', icon: IconDoc },
-  cases: { title: 'Дела', sub: 'Клиенты, заметки, файлы', icon: IconFolder },
-  updates: { title: 'Версии', sub: 'Портативная сборка, установщик, обновления', icon: IconRefresh },
-  settings: { title: 'Настройки', sub: 'Модель, тема, канал обновлений', icon: IconSettings }
+const viewMeta: Record<ViewId, { title: Parameters<ReturnType<typeof useT>>[0]; sub: Parameters<ReturnType<typeof useT>>[0]; icon: typeof IconChat }> = {
+  chat: { title: 'nav.chat', sub: 'nav.chatSub', icon: IconChat },
+  laws: { title: 'nav.laws', sub: 'nav.lawsSub', icon: IconScales },
+  documents: { title: 'nav.documents', sub: 'nav.documentsSub', icon: IconDoc },
+  cases: { title: 'nav.cases', sub: 'nav.casesSub', icon: IconFolder },
+  updates: { title: 'nav.updates', sub: 'nav.updatesSub', icon: IconRefresh },
+  settings: { title: 'nav.settings', sub: 'nav.settingsSub', icon: IconSettings }
+};
+
+const emptySettings: Settings = {
+  baseUrl: 'http://127.0.0.1:11434/v1',
+  model: 'llama3.1',
+  apiKey: '',
+  temperature: 0.25,
+  theme: 'midnight',
+  channel: 'stable',
+  language: 'ru',
+  feedUrl: '',
+  autoUpdate: true,
+  country: 'RU'
 };
 
 export default function App() {
+  const t = useT();
+  const lang = useLang();
+  const demo = useDemo();
   const [view, setView] = useState<ViewId>('chat');
   const [settings, setSettings] = useState<Settings | null>(null);
   const [countries, setCountries] = useState<Country[]>([]);
@@ -56,11 +54,34 @@ export default function App() {
 
   messagesRef.current = messages;
 
+  const demoConversation = useMemo<ChatMessage[]>(
+    () => [
+      { id: 'demo-user', role: 'user', text: demo.question },
+      {
+        id: 'demo-ai',
+        role: 'assistant',
+        mode: 'ai',
+        text: demo.answer,
+        sources: demo.sources.map((source) => ({ ...source, country: 'RU', text: '' }))
+      }
+    ],
+    [demo]
+  );
+
   const applyTheme = useCallback((theme: Theme, persist = false) => {
     document.documentElement.dataset.theme = theme;
     setSettings((prev) => (prev ? { ...prev, theme } : prev));
     if (persist) api.saveSettings({ theme });
   }, []);
+
+  const changeLanguage = useCallback(
+    (next: Lang) => {
+      setLang(next);
+      setSettings((prev) => (prev ? { ...prev, language: next } : prev));
+      api.saveSettings({ language: next }).catch(() => undefined);
+    },
+    []
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -73,20 +94,10 @@ export default function App() {
         api.updateStatus().catch(() => ({ stage: 'idle' as const }))
       ]);
       if (cancelled) return;
-      const safe = loaded ?? {
-        baseUrl: 'http://127.0.0.1:11434/v1',
-        model: 'llama3.1',
-        apiKey: '',
-        temperature: 0.25,
-        theme: 'midnight' as Theme,
-        channel: 'stable' as const,
-        language: 'ru',
-        feedUrl: '',
-        autoUpdate: true,
-        country: 'RU'
-      };
+      const safe = loaded ?? emptySettings;
       setSettings(safe);
       document.documentElement.dataset.theme = safe.theme;
+      if (safe.language === 'en' || safe.language === 'ru') setLang(safe.language);
       setCountries(overview.countries);
       setCounts(overview.counts);
       setTotal(overview.total);
@@ -113,14 +124,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    setMessages((prev) => (prev.some((msg) => msg.id.startsWith('demo')) ? demoConversation : prev));
+  }, [demoConversation]);
+
+  useEffect(() => {
     window.__nexusShots = {
-      set: (theme, nextView) => {
+      set: (theme, nextView, nextLang) => {
         applyTheme(theme, false);
+        if (nextLang) changeLanguage(nextLang);
         setView(nextView as ViewId);
         if (nextView === 'chat') setMessages((prev) => (prev.length ? prev : demoConversation));
       }
     };
-  }, [applyTheme]);
+  }, [applyTheme, changeLanguage, demoConversation]);
 
   const saveSettings = useCallback(async (patch: Partial<Settings>) => {
     const next = await api.saveSettings(patch);
@@ -156,7 +172,7 @@ export default function App() {
           msg.id === requestId
             ? {
                 ...msg,
-                text: result.text || 'Модель не вернула ответ. Проверьте адрес сервера в настройках.',
+                text: result.text || t('chat.emptyAnswer'),
                 sources: result.sources,
                 mode: result.mode,
                 error: result.error,
@@ -167,7 +183,7 @@ export default function App() {
       );
       setBusy(false);
     },
-    [busy, country]
+    [busy, country, t]
   );
 
   const stop = useCallback(async () => {
@@ -185,7 +201,7 @@ export default function App() {
       if (!target) {
         target = {
           id: uid(),
-          title: `Консультация ${new Date().toLocaleDateString('ru-RU')}`,
+          title: t('app.caseTitle', { date: formatDate(new Date(), lang) }),
           client: '',
           status: 'open',
           country,
@@ -202,7 +218,7 @@ export default function App() {
       });
       setCases((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
     },
-    [cases, country]
+    [cases, country, lang, t]
   );
 
   const refreshCases = useCallback(async () => {
@@ -211,15 +227,16 @@ export default function App() {
 
   const meta = viewMeta[view];
   const activeCount = view === 'laws' ? total.articles : view === 'cases' ? cases.length : 0;
+  const countryName = countryLabel(country, countries.find((item) => item.code === country)?.name, lang);
 
   if (!settings) {
     return (
       <div className="app">
         <div />
         <div className="main">
-          <div className="titlebar"><span className="tb-dot" /><span className="tb-title">Nexus-Юрист</span></div>
+          <div className="titlebar"><span className="tb-dot" /><span className="tb-title">{t('app.name')}</span></div>
           <div className="page">
-            <div className="empty">Загрузка правовой базы…</div>
+            <div className="empty">{t('app.loading')}</div>
           </div>
         </div>
       </div>
@@ -232,8 +249,8 @@ export default function App() {
         <div className="brand">
           <Logo size={38} />
           <div className="brand-text">
-            <div className="brand-name">Nexus-Юрист</div>
-            <div className="brand-sub">Nexus × АутSquad</div>
+            <div className="brand-name">{t('app.name')}</div>
+            <div className="brand-sub">{t('app.brand')}</div>
           </div>
         </div>
 
@@ -242,9 +259,9 @@ export default function App() {
             const ItemIcon = viewMeta[id].icon;
             const count = id === 'laws' ? total.articles : id === 'cases' ? cases.length : 0;
             return (
-              <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => setView(id)}>
+              <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => setView(id)} title={t(viewMeta[id].sub)}>
                 <span className="nav-icon"><ItemIcon size={17} /></span>
-                {viewMeta[id].title}
+                {t(viewMeta[id].title)}
                 {count > 0 && <span className="nav-count num">{count}</span>}
               </button>
             );
@@ -253,7 +270,7 @@ export default function App() {
 
         <div className="sidebar-foot">
           <div className="side-note">
-            <strong>Справочная выдержка.</strong> Нормы проверяйте в актуальной редакции. Приложение не заменяет адвоката.
+            <strong>{t('app.footerTitle')}</strong> {t('app.footerNote')}
           </div>
           <div className="side-meta">
             <span>v{info?.version ?? '1.0.0'}</span>
@@ -265,7 +282,7 @@ export default function App() {
       <div className="main">
         <div className="titlebar">
           <span className="tb-dot" />
-          <span className="tb-title">{settings.model || 'модель не выбрана'}</span>
+          <span className="tb-title">{settings.model || t('app.noModel')}</span>
           <div className="tb-right">
             <div className="theme-switch">
               {(['midnight', 'ivory', 'aurum'] as Theme[]).map((theme) => (
@@ -274,7 +291,7 @@ export default function App() {
                   className={`theme-dot ${settings.theme === theme ? 'active' : ''}`}
                   data-theme-opt={theme}
                   onClick={() => applyTheme(theme, true)}
-                  title={theme === 'midnight' ? 'Тёмная фиолетовая' : theme === 'ivory' ? 'Светлая синяя' : 'Золотая'}
+                  title={t(theme === 'midnight' ? 'theme.midnight' : theme === 'ivory' ? 'theme.ivory' : 'theme.aurum')}
                 />
               ))}
             </div>
@@ -283,8 +300,8 @@ export default function App() {
 
         <div className="topbar">
           <div>
-            <h1>{meta.title}</h1>
-            <div className="sub">{meta.sub}</div>
+            <h1>{t(meta.title)}</h1>
+            <div className="sub">{t(meta.sub)}</div>
           </div>
           <div className="topbar-actions">
             {view === 'chat' && (
@@ -299,12 +316,12 @@ export default function App() {
               >
                 {countries.map((item) => (
                   <option key={item.code} value={item.code}>
-                    {item.name} ({item.code})
+                    {countryLabel(item.code, item.name, lang)} ({item.code})
                   </option>
                 ))}
               </select>
             )}
-            {activeCount > 0 && <span className="badge">{activeCount} в базе</span>}
+            {activeCount > 0 && <span className="badge">{t('app.inBase', { n: activeCount })}</span>}
             <button className="btn ghost sm" onClick={() => setView('updates')}>
               <IconRefresh size={14} /> v{info?.version ?? '1.0.0'}
             </button>
@@ -321,7 +338,7 @@ export default function App() {
               onClear={() => setMessages([])}
               onSaveToCase={saveToCase}
               onOpenSettings={() => setView('settings')}
-              countryName={countries.find((item) => item.code === country)?.name ?? 'Россия'}
+              countryName={countryName}
               model={settings.model}
             />
           )}
@@ -345,7 +362,13 @@ export default function App() {
           {view === 'cases' && <CasesView cases={cases} country={country} onChange={refreshCases} />}
           {view === 'updates' && <UpdatesView info={info} settings={settings} update={update} setUpdate={setUpdate} />}
           {view === 'settings' && (
-            <SettingsView settings={settings} onSave={saveSettings} info={info} onTheme={(theme) => applyTheme(theme, true)} />
+            <SettingsView
+              settings={settings}
+              onSave={saveSettings}
+              info={info}
+              onTheme={(theme) => applyTheme(theme, true)}
+              onLanguage={changeLanguage}
+            />
           )}
         </div>
       </div>

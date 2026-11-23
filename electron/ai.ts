@@ -1,5 +1,6 @@
 import type { Article, Laws } from './laws';
 import type { Settings } from './store';
+import { resolveLang, tr, type Lang } from './i18n';
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 export type Source = { id: string; code: string; number: string; title: string; country: string; text: string };
@@ -27,33 +28,36 @@ export function buildSources(query: string, country: string, laws: Laws, limit =
 }
 
 export function buildSystemPrompt(sources: Source[], country: string | undefined, countryName: string | undefined, language: string) {
+  const lang = resolveLang(language);
   const context = sources
     .map((source, i) => `[${i + 1}] ${source.code}, ${source.number}. ${source.title}\n${trim(source.text, 1400)}`)
     .join('\n\n');
 
   return [
-    'Ты Nexus-Юрист — правовой помощник экосистемы Nexus × АутSquad.',
-    `Отвечай на языке: ${language === 'en' ? 'английский' : language === 'de' ? 'немецкий' : 'русский'}.`,
-    countryName ? `Правовая система по умолчанию: ${countryName} (${country}).` : '',
-    'Структура ответа: короткий вывод, затем правовое обоснование со ссылками на нормы, затем практические шаги и риски.',
-    'Ссылайся на выдержки из базы как [1], [2]. Не выдумывай номера статей: если нормы нет в выдержках, прямо скажи, что нужно проверить актуальную редакцию.',
-    'В конце добавь строку: «Это справочная информация, а не юридическая помощь».',
-    context ? `Выдержки из базы законов:\n${context}` : 'Выдержек из базы по запросу нет — отвечай общими принципами и предупреди о необходимости проверки нормы.',
-    'Пиши плотно, без воды, до 350 слов. Форматирование: markdown, короткие абзацы, списки где уместно.'
+    tr(lang, 'prompt.role'),
+    tr(lang, language === 'en' ? 'prompt.answerEn' : language === 'de' ? 'prompt.answerDe' : 'prompt.answerRu'),
+    countryName ? tr(lang, 'prompt.country', { country: countryName, code: country ?? '' }) : '',
+    tr(lang, 'prompt.structure'),
+    tr(lang, 'prompt.cite'),
+    tr(lang, 'prompt.disclaimer'),
+    context ? tr(lang, 'prompt.context', { context }) : tr(lang, 'prompt.noContext'),
+    tr(lang, 'prompt.style')
   ]
     .filter(Boolean)
     .join('\n\n');
 }
 
-export function offlineAnswer(query: string, sources: Source[], countryName: string | undefined) {
-  const head = `**Справочный режим** (модель не подключена). Запрос: «${trim(query, 160)}».`;
+export function offlineAnswer(query: string, sources: Source[], countryName: string | undefined, language: string) {
+  const lang: Lang = resolveLang(language);
+  const head = tr(lang, 'offline.head', { query: trim(query, 160) });
   if (!sources.length) {
-    return `${head}\n\nВ локальной базе нет норм под этот запрос. Подключите модель в «Настройках» (Ollama, llama.cpp или любой OpenAI-совместимый сервер) либо импортируйте свой пакет законов в «Законах».\n\nЭто справочная информация, а не юридическая помощь.`;
+    return `${head}\n\n${tr(lang, 'offline.noNorms')}\n\n${tr(lang, 'offline.disclaimer')}`;
   }
   const body = sources
     .map((source, i) => `- **[${i + 1}] ${source.code}, ${source.number}. ${source.title}** — ${trim(source.text.replace(/\s+/g, ' '), 320)}`)
     .join('\n');
-  return `${head}\n\n${countryName ? `Правовая система: ${countryName}.\n\n` : ''}Найденные нормы:\n${body}\n\n**Что делать:** уточните фактический состав (кто, когда, какие документы), затем сверьте редакцию нормы на официальном портале. Для расчёта сроков и сумм используйте раздел «Документы».\n\nЭто справочная информация, а не юридическая помощь.`;
+  const system = countryName ? `${tr(lang, 'offline.system', { country: countryName })}\n\n` : '';
+  return `${head}\n\n${system}${tr(lang, 'offline.found')}\n${body}\n\n${tr(lang, 'offline.actions')}\n\n${tr(lang, 'offline.disclaimer')}`;
 }
 
 const openAiBase = (baseUrl: string) => baseUrl.replace(/\/+$/, '');
@@ -68,7 +72,7 @@ export async function listModels(settings: Settings): Promise<{ models: string[]
     const data = (await response.json()) as { data?: { id: string }[] };
     const models = (data.data ?? []).map((item) => item.id).filter(Boolean);
     if (models.length) return { models, ok: true };
-    throw new Error('Пустой список моделей');
+    throw new Error(tr(resolveLang(settings.language), 'ai.emptyModels'));
   } catch (error) {
     const root = base.replace(/\/v1$/, '');
     try {
@@ -78,7 +82,7 @@ export async function listModels(settings: Settings): Promise<{ models: string[]
       const models = (data.models ?? []).map((item) => item.name).filter(Boolean);
       return { models, ok: true };
     } catch {
-      return { models: [], ok: false, error: error instanceof Error ? error.message : 'Нет связи с моделью' };
+      return { models: [], ok: false, error: error instanceof Error ? error.message : tr(resolveLang(settings.language), 'ai.noLink') };
     }
   }
 }
@@ -107,7 +111,7 @@ export async function streamChat(options: {
       })
     });
   } catch (error) {
-    return { text: '', error: error instanceof Error ? error.message : 'Нет соединения с моделью' };
+    return { text: '', error: error instanceof Error ? error.message : tr(resolveLang(settings.language), 'ai.noConnection') };
   }
 
   if (!response.ok || !response.body) {
@@ -143,7 +147,7 @@ export async function streamChat(options: {
           onDelta(delta);
         }
       } catch {
-        /* неполный чанк — пропускаем */
+        continue;
       }
     }
   }
@@ -152,5 +156,5 @@ export async function streamChat(options: {
 }
 
 export function describeArticle(article: Article) {
-  return `${article.code}, ${article.number} «${article.title}»`;
+  return `${article.code}, ${article.number} "${article.title}"`;
 }

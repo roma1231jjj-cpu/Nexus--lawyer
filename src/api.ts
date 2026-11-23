@@ -1,3 +1,5 @@
+import { createMockApi } from './mock';
+
 export type Theme = 'midnight' | 'ivory' | 'aurum';
 
 export type Settings = {
@@ -80,7 +82,7 @@ export type UpdateStatus = {
   releaseDate?: string;
 };
 
-type Api = {
+export type Api = {
   info(): Promise<{ version: string; platform: string; userData: string; packaged: boolean; electron: string; repo: { owner: string; repo: string } }>;
   getSettings(): Promise<Settings>;
   saveSettings(patch: Partial<Settings>): Promise<Settings>;
@@ -116,11 +118,11 @@ type Api = {
 
 declare global {
   interface Window {
-    nexus: Api;
-    __nexusShots?: { set: (theme: Theme, view: string) => void };
+    nexus?: Api;
+    __nexusShots?: { set: (theme: Theme, view: string, lang?: 'ru' | 'en') => void };
   }
 }
 
-export const api = window.nexus;
+export const api: Api = window.nexus ?? createMockApi();
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
