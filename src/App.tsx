@@ -29,9 +29,10 @@ const emptySettings: Settings = {
   theme: 'midnight',
   channel: 'stable',
   language: 'ru',
+  answerLanguage: 'ru',
   feedUrl: '',
   autoUpdate: true,
-  country: 'RU'
+  country: 'ALL'
 };
 
 export default function App() {
@@ -43,19 +44,26 @@ export default function App() {
   const [countries, setCountries] = useState<Country[]>([]);
   const [counts, setCounts] = useState<Record<string, { name: string; flag: string; count: number }>>({});
   const [total, setTotal] = useState({ articles: 0, countries: 0 });
-  const [country, setCountry] = useState('RU');
+  const [country, setCountry] = useState('ALL');
   const [cases, setCases] = useState<LegalCase[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [update, setUpdate] = useState<UpdateStatus>({ stage: 'idle' });
-  const [info, setInfo] = useState<{ version: string; packaged: boolean; userData: string; electron: string } | null>(null);
+  const [info, setInfo] = useState<{ version: string; packaged: boolean; userData: string; electron: string; shots?: boolean } | null>(null);
   const [pendingSave, setPendingSave] = useState<ChatMessage | null>(null);
   const [saveTarget, setSaveTarget] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
   const requestRef = useRef<string | null>(null);
+  const generationRef = useRef(0);
+  const queuedRef = useRef<string | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
+  const countryRef = useRef('ALL');
+  const demoOn = Boolean(info?.shots);
 
   messagesRef.current = messages;
+  countryRef.current = country;
 
   const demoConversation = useMemo<ChatMessage[]>(
     () => [
@@ -65,7 +73,7 @@ export default function App() {
         role: 'assistant',
         mode: 'ai',
         text: demo.answer,
-        sources: demo.sources.map((source) => ({ ...source, country: 'RU', text: '' }))
+        sources: demo.sources.map((source) => ({ ...source, text: '', country: 'RU' }))
       }
     ],
     [demo]
@@ -74,27 +82,25 @@ export default function App() {
   const applyTheme = useCallback((theme: Theme, persist = false) => {
     document.documentElement.dataset.theme = theme;
     setSettings((prev) => (prev ? { ...prev, theme } : prev));
-    if (persist) api.saveSettings({ theme });
+    if (persist) api.saveSettings({ theme }).catch(() => undefined);
   }, []);
 
-  const changeLanguage = useCallback(
-    (next: Lang) => {
-      setLang(next);
-      setSettings((prev) => (prev ? { ...prev, language: next } : prev));
-      api.saveSettings({ language: next }).catch(() => undefined);
-    },
-    []
-  );
+  const changeUiLanguage = useCallback((next: Lang) => {
+    setLang(next);
+    setSettings((prev) => (prev ? { ...prev, language: next } : prev));
+    api.saveSettings({ language: next }).catch(() => setToast(t('settings.saveFailed')));
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [loaded, overview, appInfo, list, status] = await Promise.all([
+      const [loaded, overview, appInfo, list, status, history] = await Promise.all([
         api.getSettings().catch(() => null),
         api.lawsOverview().catch(() => ({ countries: [], counts: {}, total: { articles: 0, countries: 0 } })),
         api.info().catch(() => null),
         api.cases().catch(() => []),
-        api.updateStatus().catch(() => ({ stage: 'idle' as const }))
+        api.updateStatus().catch(() => ({ stage: 'idle' as const })),
+        api.chatHistory?.().catch(() => []) ?? Promise.resolve([])
       ]);
       if (cancelled) return;
       const safe = loaded ?? emptySettings;
@@ -104,10 +110,21 @@ export default function App() {
       setCountries(overview.countries);
       setCounts(overview.counts);
       setTotal(overview.total);
-      setCountry(safe.country || 'RU');
+      setCountry(safe.country || 'ALL');
       setCases(list);
       setInfo(appInfo);
       setUpdate(status);
+      if (Array.isArray(history) && history.length) {
+        // история на диске хранится без id — восстанавливаем ключи, иначе ломаются React и сохранение
+        setMessages(
+          history.map((item) => ({
+            id: uid(),
+            role: item.role === 'assistant' ? 'assistant' : 'user',
+            text: String(item.text ?? '')
+          }))
+        );
+      }
+      setHistoryLoaded(true);
     })();
     return () => {
       cancelled = true;
@@ -126,20 +143,32 @@ export default function App() {
     };
   }, []);
 
+  // демо-диалог живёт только в режиме скриншотов, иначе образец попадал в реальные данные
   useEffect(() => {
-    setMessages((prev) => (prev.some((msg) => msg.id.startsWith('demo')) ? demoConversation : prev));
-  }, [demoConversation]);
+    if (!demoOn) return;
+    setMessages((prev) => (prev.length ? prev : demoConversation));
+  }, [demoOn, demoConversation]);
 
   useEffect(() => {
+    if (!demoOn) return;
     window.__nexusShots = {
       set: (theme, nextView, nextLang) => {
         applyTheme(theme, false);
-        if (nextLang) changeLanguage(nextLang);
+        if (nextLang) changeUiLanguage(nextLang);
         setView(nextView as ViewId);
         if (nextView === 'chat') setMessages((prev) => (prev.length ? prev : demoConversation));
       }
     };
-  }, [applyTheme, changeLanguage, demoConversation]);
+  }, [applyTheme, changeUiLanguage, demoConversation, demoOn]);
+
+  // история чата переживает перезапуск
+  useEffect(() => {
+    if (!historyLoaded || !messages.length) return;
+    const timer = setTimeout(() => {
+      api.saveChat?.(messages.filter((msg) => !msg.pending && !msg.id.startsWith('demo'))).catch(() => undefined);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [historyLoaded, messages]);
 
   const saveSettings = useCallback(async (patch: Partial<Settings>) => {
     const next = await api.saveSettings(patch);
@@ -149,76 +178,152 @@ export default function App() {
     return next;
   }, []);
 
-  const send = useCallback(
-    async (raw: string) => {
-      const text = raw.trim();
-      if (!text || busy) return;
+  const runChat = useCallback(
+    async (text: string, targetCountry: string) => {
       const requestId = uid();
+      const generation = generationRef.current + 1;
+      generationRef.current = generation;
       requestRef.current = requestId;
       const history = messagesRef.current
-        .filter((msg) => !msg.pending && msg.text.trim())
+        .filter((msg) => !msg.pending && !msg.id.startsWith('demo') && msg.text.trim())
         .slice(-8)
         .map((msg) => ({ role: msg.role, content: msg.text }));
 
-      setMessages((prev) => [
-        ...prev,
-        { id: uid(), role: 'user', text },
-        { id: requestId, role: 'assistant', text: '', pending: true }
-      ]);
+      setMessages((prev) => [...prev, { id: uid(), role: 'user', text }, { id: requestId, role: 'assistant', text: '', pending: true }]);
       setBusy(true);
       setView('chat');
 
       try {
-        const result = await api.chat({ requestId, messages: history, query: text, country });
+        const result = await api.chat({ requestId, messages: history, query: text, country: targetCountry });
+        if (generationRef.current !== generation) return;
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === requestId
               ? {
                   ...msg,
-                  text: result.text || t('chat.emptyAnswer'),
+                  text: result.text || (result.cancelled ? t('chat.cancelled') : t('chat.emptyAnswer')),
                   sources: result.sources,
                   mode: result.mode,
                   error: result.error,
-                  pending: false
+                  cancelled: result.cancelled,
+                  pending: false,
+                  country: targetCountry
                 }
               : msg
           )
         );
       } catch (error) {
+        if (generationRef.current !== generation) return;
         const detail = error instanceof Error ? error.message : String(error);
         setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === requestId ? { ...msg, text: '', mode: 'offline', error: detail, pending: false } : msg
-          )
+          prev.map((msg) => (msg.id === requestId ? { ...msg, text: '', mode: 'offline', error: detail, pending: false } : msg))
         );
       } finally {
-        requestRef.current = null;
-        setBusy(false);
+        if (generationRef.current === generation) {
+          requestRef.current = null;
+          setBusy(false);
+          const queued = queuedRef.current;
+          queuedRef.current = null;
+          if (queued) void runChat(queued, countryRef.current);
+        }
       }
     },
-    [busy, country, t]
+    [t]
+  );
+
+  const send = useCallback(
+    (raw: string): boolean => {
+      const text = raw.trim();
+      if (!text) return false;
+      if (busy) {
+        queuedRef.current = text;
+        setToast(t('chat.queued'));
+        return true;
+      }
+      setDraft('');
+      void runChat(text, countryRef.current);
+      return false;
+    },
+    [busy, runChat, t]
   );
 
   const stop = useCallback(async () => {
-    if (requestRef.current) {
-      await api.stop(requestRef.current);
-      setMessages((prev) => prev.map((msg) => (msg.id === requestRef.current ? { ...msg, pending: false } : msg)));
+    const current = requestRef.current;
+    generationRef.current += 1;
+    if (current) {
+      await api.stop(current).catch(() => undefined);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === current ? { ...msg, pending: false, cancelled: true, text: msg.text || t('chat.cancelled') } : msg
+        )
+      );
       requestRef.current = null;
     }
+    queuedRef.current = null;
     setBusy(false);
-  }, []);
+  }, [t]);
+
+  const clearChat = useCallback(async () => {
+    if (requestRef.current) {
+      await stop();
+    }
+    setMessages([]);
+    await api.clearChat?.().catch(() => undefined);
+  }, [stop]);
+
+  const changeCountry = useCallback(
+    async (code: string) => {
+      if (code === country) return;
+      const hadContext = messages.some((msg) => !msg.id.startsWith('demo') && !msg.pending);
+      setCountry(code);
+      countryRef.current = code;
+      await saveSettings({ country: code }).catch(() => setToast(t('settings.saveFailed')));
+      if (hadContext) {
+        // не смешиваем правовые системы: контекст прошлой страны стираем
+        if (requestRef.current) await stop();
+        setMessages([]);
+        await api.clearChat?.().catch(() => undefined);
+        setToast(t('chat.contextCleared'));
+      }
+    },
+    [country, messages, saveSettings, stop, t]
+  );
 
   const openSaveToCase = useCallback(
     (message: ChatMessage) => {
+      if (message.pending) {
+        setToast(t('chat.waitAnswer'));
+        return;
+      }
       setSaveTarget(cases[0]?.id ?? '__new');
       setPendingSave(message);
     },
-    [cases]
+    [cases, t]
   );
 
   const confirmSaveToCase = useCallback(async () => {
     const message = pendingSave;
     if (!message) return;
+    const question = (() => {
+      const index = messages.findIndex((item) => item.id === message.id);
+      const before = index > 0 ? messages[index - 1] : null;
+      return before && before.role === 'user' ? before.text : '';
+    })();
+    const lines = [
+      question ? `${t('chat.question')}: ${question}` : '',
+      `${t('chat.answer')}:`,
+      message.text,
+      message.sources?.length
+        ? `\n${t('chat.sources')}:\n${message.sources
+            .map((source, i) => `[${i + 1}] (${source.country}) ${source.code}, ${source.number}. ${source.title}`)
+            .join('\n')}`
+        : '',
+      `\n${t('chat.mode')}: ${message.mode === 'offline' ? t('chat.modeOffline') : t('chat.modeAi')}${
+        message.error ? ` (${message.error})` : ''
+      }`,
+      `${t('settings.defaultCountry')}: ${message.country ?? country}`
+    ].filter(Boolean);
+
     const existing = cases.find((item) => item.id === saveTarget);
     const target: LegalCase = existing ?? {
       id: uid(),
@@ -235,16 +340,21 @@ export default function App() {
     try {
       const saved = await api.saveCase({
         ...target,
-        notes: [...target.notes, { id: uid(), text: message.text, createdAt: new Date().toISOString() }]
+        notes: [...target.notes, { id: uid(), text: lines.join('\n'), createdAt: new Date().toISOString() }]
       });
-      setCases((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+      if (!saved.ok || !saved.item) {
+        setPendingSave(null);
+        setToast(saved.error === 'stale' ? t('cases.stale') : t('cases.saveFailed'));
+        return;
+      }
+      setCases((prev) => [saved.item!, ...prev.filter((item) => item.id !== saved.item!.id)]);
       setPendingSave(null);
-      setToast(t('cases.savedTo', { title: saved.title || t('cases.untitled') }));
+      setToast(t('cases.savedTo', { title: saved.item.title || t('cases.untitled') }));
     } catch {
       setPendingSave(null);
       setToast(t('cases.saveFailed'));
     }
-  }, [cases, country, lang, pendingSave, saveTarget, t]);
+  }, [cases, country, lang, messages, pendingSave, saveTarget, t]);
 
   useEffect(() => {
     if (!toast) return;
@@ -290,7 +400,12 @@ export default function App() {
             const ItemIcon = viewMeta[id].icon;
             const count = id === 'laws' ? total.articles : id === 'cases' ? cases.length : 0;
             return (
-              <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => setView(id)} title={t(viewMeta[id].sub)}>
+              <button
+                key={id}
+                className={`nav-item ${view === id ? 'active' : ''}`}
+                onClick={() => setView(id)}
+                title={t(viewMeta[id].sub)}
+              >
                 <span className="nav-icon"><ItemIcon size={17} /></span>
                 {t(viewMeta[id].title)}
                 {count > 0 && <span className="nav-count num">{count}</span>}
@@ -337,16 +452,15 @@ export default function App() {
             <div className="sub">{t(meta.sub)}</div>
           </div>
           <div className="topbar-actions">
-            {view === 'chat' && (
+            {(view === 'chat' || view === 'laws') && (
               <select
                 className="input"
-                style={{ width: 190, height: 34, padding: '0 10px' }}
+                style={{ width: 210, height: 34, padding: '0 10px' }}
                 value={country}
-                onChange={(event) => {
-                  setCountry(event.target.value);
-                  saveSettings({ country: event.target.value });
-                }}
+                aria-label={t('settings.defaultCountry')}
+                onChange={(event) => void changeCountry(event.target.value)}
               >
+                <option value="ALL">{t('laws.allCountries')}</option>
                 {countries.map((item) => (
                   <option key={item.code} value={item.code}>
                     {countryLabel(item.code, item.name, lang)} ({item.code})
@@ -366,9 +480,11 @@ export default function App() {
             <ChatView
               messages={messages}
               busy={busy}
+              draft={draft}
+              onDraft={setDraft}
               onSend={send}
               onStop={stop}
-              onClear={() => setMessages([])}
+              onClear={clearChat}
               onSaveToCase={openSaveToCase}
               onOpenSettings={() => setView('settings')}
               countryName={countryName}
@@ -381,26 +497,42 @@ export default function App() {
               counts={counts}
               total={total}
               country={country}
-              onCountry={(code) => {
-                setCountry(code);
-                saveSettings({ country: code });
-              }}
-              onAsk={(question) => {
+              onCountry={(code) => void changeCountry(code)}
+              onAsk={(question, articleCountry) => {
+                if (articleCountry && articleCountry !== country) {
+                  setToast(t('laws.askOther'));
+                }
                 setView('chat');
-                send(question);
+                void (async () => {
+                  if (articleCountry && articleCountry !== countryRef.current) {
+                    setCountry(articleCountry);
+                    countryRef.current = articleCountry;
+                    await saveSettings({ country: articleCountry }).catch(() => undefined);
+                  }
+                  send(question);
+                })();
+              }}
+              onImported={async () => {
+                const overview = await api.lawsOverview().catch(() => null);
+                if (overview) {
+                  setCountries(overview.countries);
+                  setCounts(overview.counts);
+                  setTotal(overview.total);
+                }
               }}
             />
           )}
-          {view === 'documents' && <DocsView />}
+          {view === 'documents' && <DocsView country={country} demo={demoOn} />}
           {view === 'cases' && <CasesView cases={cases} country={country} onChange={refreshCases} />}
           {view === 'updates' && <UpdatesView info={info} settings={settings} update={update} setUpdate={setUpdate} />}
           {view === 'settings' && (
             <SettingsView
               settings={settings}
+              countries={countries}
               onSave={saveSettings}
               info={info}
               onTheme={(theme) => applyTheme(theme, true)}
-              onLanguage={changeLanguage}
+              onLanguage={changeUiLanguage}
             />
           )}
         </div>

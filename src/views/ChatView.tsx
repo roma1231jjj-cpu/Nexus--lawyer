@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ChatMessage } from '../api';
 import { Rich } from '../components/Rich';
 import { IconCopy, IconDoc, IconFolder, IconScales, IconSend, IconSettings, IconSpark, IconStop, Logo } from '../components/Icons';
@@ -7,7 +7,9 @@ import { useT } from '../i18n';
 type Props = {
   messages: ChatMessage[];
   busy: boolean;
-  onSend: (text: string) => void;
+  draft: string;
+  onDraft: (text: string) => void;
+  onSend: (text: string) => boolean | void;
   onStop: () => void;
   onClear: () => void;
   onSaveToCase: (message: ChatMessage) => void;
@@ -23,41 +25,51 @@ const quickKeys = [
   { title: 'chat.quick4Title', text: 'chat.quick4Text' }
 ] as const;
 
-export default function ChatView({ messages, busy, onSend, onStop, onClear, onSaveToCase, onOpenSettings, countryName, model }: Props) {
+export default function ChatView({
+  messages,
+  busy,
+  draft,
+  onDraft,
+  onSend,
+  onStop,
+  onClear,
+  onSaveToCase,
+  onOpenSettings,
+  countryName,
+  model
+}: Props) {
   const t = useT();
-  const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
-  const countRef = useRef(0);
+  const stickRef = useRef(true);
 
   useEffect(() => {
     const area = scrollRef.current;
-    if (!area) return;
-    const isDemo = messages.some((message) => message.id.startsWith('demo'));
-    if (isDemo) {
-      countRef.current = messages.length;
-      area.scrollTo({ top: 0 });
-      return;
-    }
-    if (messages.length !== countRef.current) {
-      countRef.current = messages.length;
-      endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
-      return;
-    }
+    if (!area || !stickRef.current) return;
     area.scrollTop = area.scrollHeight;
   }, [messages]);
 
+  useEffect(() => {
+    if (!draft && areaRef.current) areaRef.current.style.height = 'auto';
+  }, [draft]);
+
   const submit = () => {
-    if (!draft.trim() || busy) return;
-    onSend(draft);
-    setDraft('');
+    if (!draft.trim()) return;
+    const queued = onSend(draft) === true;
+    if (!queued) onDraft('');
     if (areaRef.current) areaRef.current.style.height = 'auto';
   };
 
   return (
     <div className="chat">
-      <div className="chat-scroll" ref={scrollRef}>
+      <div
+        className="chat-scroll"
+        ref={scrollRef}
+        onScroll={(event) => {
+          const area = event.currentTarget;
+          stickRef.current = area.scrollHeight - area.scrollTop - area.clientHeight < 120;
+        }}
+      >
         {messages.length === 0 ? (
           <div className="chat-empty">
             <span className="badge"><IconSpark size={11} /> {t('chat.badge')}</span>
@@ -91,6 +103,9 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
                     message.text
                   )}
                   {message.pending && message.text && <span className="caret" />}
+                  {message.cancelled && !message.pending && (
+                    <div className="hint-line" style={{ marginTop: 8 }}>{t('chat.cancelled')}</div>
+                  )}
 
                   {message.sources && message.sources.length > 0 && (
                     <div className="sources">
@@ -134,7 +149,6 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
             </div>
           ))
         )}
-        <div ref={endRef} />
       </div>
 
       <div className="composer">
@@ -144,7 +158,7 @@ export default function ChatView({ messages, busy, onSend, onStop, onClear, onSa
             value={draft}
             placeholder={t('chat.placeholder')}
             onChange={(event) => {
-              setDraft(event.target.value);
+              onDraft(event.target.value);
               event.target.style.height = 'auto';
               event.target.style.height = `${Math.min(event.target.scrollHeight, 160)}px`;
             }}

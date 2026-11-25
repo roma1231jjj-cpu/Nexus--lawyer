@@ -13,7 +13,7 @@ export type UpdateStatus = {
   releaseDate?: string;
 };
 
-export const REPO = { owner: 'roma1231jjj-cpu', repo: 'Nexus--lawyer' };
+export const REPO = { owner: 'roma1231jjj-cpu', repo: 'nexus-lawyer' };
 
 export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () => string, channel: () => 'stable' | 'beta', lang: () => Lang) {
   let status: UpdateStatus = { stage: 'idle' };
@@ -21,10 +21,15 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
 
   const localize = (key: Parameters<typeof tr>[1], vars?: Record<string, string | number>) => tr(lang(), key, vars);
 
-  const push = (next: Partial<UpdateStatus>) => {
-    status = { ...status, ...next };
+  // каждый этап начинается с чистого листа: иначе после ошибки оставался старый процент и версия
+  const push = (next: Partial<UpdateStatus>, reset = false) => {
+    status = reset
+      ? { stage: next.stage ?? 'idle', ...next }
+      : { ...status, ...next };
     send(status);
   };
+
+  const portable = Boolean(process.env.PORTABLE_EXECUTABLE_DIR) || /portable/i.test(process.env.NEXUS_LAWYER_BUILD ?? '');
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -41,24 +46,28 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
     autoUpdater.allowPrerelease = channel() === 'beta';
   };
 
-  autoUpdater.on('checking-for-update', () => push({ stage: 'checking', message: localize('idle.checking') }));
+  autoUpdater.on('checking-for-update', () => push({ stage: 'checking', message: localize('idle.checking') }, true));
   autoUpdater.on('update-available', (info) =>
-    push({ stage: 'available', version: info.version, notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : '', releaseDate: info.releaseDate })
+    push({ stage: 'available', version: info.version, notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : '', releaseDate: info.releaseDate, percent: undefined }, true)
   );
-  autoUpdater.on('update-not-available', (info) => push({ stage: 'none', version: info.version, message: localize('idle.actual') }));
+  autoUpdater.on('update-not-available', (info) => push({ stage: 'none', version: info.version, percent: undefined, message: localize('idle.actual') }, true));
   autoUpdater.on('download-progress', (progress) => push({ stage: 'downloading', percent: Math.round(progress.percent) }));
-  autoUpdater.on('update-downloaded', (info) => push({ stage: 'ready', version: info.version, message: localize('idle.downloaded') }));
+  autoUpdater.on('update-downloaded', (info) => push({ stage: 'ready', version: info.version, percent: 100, message: localize('idle.downloaded') }, true));
   autoUpdater.on('error', (error) => {
-    const message = /No published versions|404/i.test(error.message) ? localize('idle.noReleasesShort') : error.message;
-    if (/No published versions|404/i.test(error.message)) {
-      push({ stage: 'none', message: localize('idle.noReleases') });
+    const raw = error?.message ?? '';
+    if (/No published versions|404/i.test(raw)) {
+      push({ stage: 'none', percent: undefined, message: localize('idle.noReleases') }, true);
+      return;
+    }
+    if (portable) {
+      push({ stage: 'error', percent: undefined, message: localize('idle.portableUpdate') }, true);
       return;
     }
     if (silent) {
-      push({ stage: 'idle', message: localize('idle.silentFailed', { error: message }) });
+      push({ stage: 'idle', percent: undefined, message: localize('idle.silentFailed', { error: raw }) }, true);
       return;
     }
-    push({ stage: 'error', message });
+    push({ stage: 'error', percent: undefined, message: raw }, true);
   });
 
   return {
@@ -103,7 +112,15 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
       return status;
     },
     install() {
-      autoUpdater.quitAndInstall(false, true);
+      if (portable) {
+        push({ stage: 'error', message: localize('idle.portableUpdate') }, true);
+        return { ok: false, portable: true, message: localize('idle.portableUpdate') };
+      }
+      if (status.stage !== 'ready') {
+        return { ok: false, portable: false, message: localize('idle.notReady') };
+      }
+      setImmediate(() => autoUpdater.quitAndInstall(false, true));
+      return { ok: true, portable: false };
     },
     localVersions() {
       const candidates = [

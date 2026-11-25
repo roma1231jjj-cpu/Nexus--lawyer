@@ -14,7 +14,8 @@ const defaults: Settings = {
   language: 'ru',
   feedUrl: '',
   autoUpdate: true,
-  country: 'RU'
+  answerLanguage: 'ru',
+  country: 'ALL'
 };
 
 const packs = async () => {
@@ -60,7 +61,7 @@ export function createMockApi(): Api {
   let cases: LegalCase[] = readJson<LegalCase[]>(CASES_KEY, []);
 
   return {
-    info: async () => ({ version: '1.0.0', platform: 'web', userData: 'browser preview', packaged: false, electron: 'web', repo: { owner: 'roma1231jjj-cpu', repo: 'Nexus--lawyer' } }),
+    info: async () => ({ version: '1.0.0', platform: 'web', userData: 'browser preview', packaged: false, shots: false, electron: 'web', repo: { owner: 'roma1231jjj-cpu', repo: 'nexus-lawyer' } }),
     getSettings: async () => settings,
     saveSettings: async (patch) => {
       settings = { ...settings, ...patch };
@@ -81,16 +82,21 @@ export function createMockApi(): Api {
     lawsSearch: async ({ query, country }) => {
       const { articles } = await data();
       const needle = query.trim().toLowerCase();
-      if (needle.length < 3) return [];
-      return articles
+      if (needle.length < 3) return { hits: [], total: 0, truncated: false };
+      const matched = articles
         .filter((article) => (country && country !== 'ALL' ? article.country === country : true))
-        .filter((article) => `${article.code} ${article.number} ${article.title}`.toLowerCase().includes(needle))
-        .slice(0, 40)
-        .map((article, index) => ({ article, score: 1 - index / 100 }));
+        .filter((article) => `${article.code} ${article.number} ${article.title}`.toLowerCase().includes(needle));
+      return {
+        hits: matched.slice(0, 40).map((article, index) => ({ article, score: 1 - index / 100 })),
+        total: matched.length,
+        truncated: matched.length > 40
+      };
     },
+    lawsPacks: async () => [],
+    lawsPackRemove: async () => ({ ok: false }),
     lawsCountry: async (country) => {
       const { articles } = await data();
-      const list = articles.filter((article) => article.country === country);
+      const list = country === 'ALL' ? articles : articles.filter((article) => article.country === country);
       const codes = new Map<string, { code: string; short: string; count: number }>();
       for (const article of list) {
         const entry = codes.get(article.code) ?? { code: article.code, short: article.codeShort, count: 0 };
@@ -99,26 +105,45 @@ export function createMockApi(): Api {
       }
       return { articles: list, codes: [...codes.values()] };
     },
-    lawsImport: async () => ({ imported: 0, failed: 0, canceled: false }),
+    lawsImport: async () => ({ imported: 0, skipped: 0, failed: 0, canceled: false, files: [] }),
+    chatHistory: async () => [],
+    saveChat: async () => true,
+    clearChat: async () => true,
+    caseNote: async (id, text) => {
+      const found = cases.find((entry) => entry.id === id);
+      if (!found) return { ok: false, error: 'not found' };
+      const next = { ...found, notes: [...found.notes, { id: String(Date.now()), text, createdAt: new Date().toISOString() }] };
+      cases = cases.map((entry) => (entry.id === id ? next : entry));
+      writeJson(CASES_KEY, cases);
+      return { ok: true, item: next };
+    },
     cases: async () => cases,
     saveCase: async (item) => {
       const next = { ...item, updatedAt: new Date().toISOString() };
       const index = cases.findIndex((entry) => entry.id === item.id);
       cases = index >= 0 ? cases.map((entry) => (entry.id === item.id ? next : entry)) : [next, ...cases];
       writeJson(CASES_KEY, cases);
-      return next;
+      return { ok: true, item: next };
     },
     deleteCase: async (id) => {
       cases = cases.filter((entry) => entry.id !== id);
       writeJson(CASES_KEY, cases);
-      return true;
+      return { ok: true };
     },
     attach: async (id) => {
       const found = cases.find((entry) => entry.id === id);
-      return { files: found?.files ?? [], saved: Boolean(found), canceled: false };
+      return { ok: Boolean(found), files: found?.files ?? [], canceled: false };
     },
-    openFile: async () => true,
-    revealCase: async () => true,
+    removeCaseFile: async (id, target) => {
+      const found = cases.find((entry) => entry.id === id);
+      if (!found) return { ok: false, error: 'not found' };
+      const next = { ...found, files: found.files.filter((file) => file.path !== target) };
+      cases = cases.map((entry) => (entry.id === id ? next : entry));
+      writeJson(CASES_KEY, cases);
+      return { ok: true, item: next };
+    },
+    openFile: async () => ({ ok: false, error: 'browser preview' }),
+    revealCase: async () => ({ ok: false, error: 'browser preview' }),
     openDataFolder: async () => true,
     templates: async () => getTemplates(document.documentElement.lang === 'en' ? 'en' : 'ru'),
     exportDoc: async () => ({ saved: false }),
@@ -126,7 +151,7 @@ export function createMockApi(): Api {
     remoteVersions: async () => ({ ok: false, items: [], error: 'browser preview' }),
     checkUpdate: async () => ({ stage: 'dev', message: 'browser preview' }),
     downloadUpdate: async () => ({ stage: 'dev', message: 'browser preview' }),
-    installUpdate: () => undefined,
+    installUpdate: async () => ({ ok: false, portable: false, message: 'browser preview' }),
     updateStatus: async () => ({ stage: 'idle' }),
     onUpdate: () => () => undefined,
     open: async (url) => {

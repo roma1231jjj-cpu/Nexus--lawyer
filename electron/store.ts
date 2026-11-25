@@ -9,6 +9,7 @@ export type Settings = {
   theme: 'midnight' | 'ivory' | 'aurum';
   channel: 'stable' | 'beta';
   language: string;
+  answerLanguage: string;
   feedUrl: string;
   autoUpdate: boolean;
   country: string;
@@ -22,10 +23,13 @@ export const defaultSettings: Settings = {
   theme: 'midnight',
   channel: 'stable',
   language: 'ru',
+  answerLanguage: 'ru',
   feedUrl: '',
   autoUpdate: true,
-  country: 'RU'
+  country: 'ALL'
 };
+
+const LANGS = new Set(['ru', 'en', 'de']);
 
 export function createStore(dir: string) {
   const file = (name: string) => path.join(dir, name);
@@ -43,12 +47,19 @@ export function createStore(dir: string) {
     fs.renameSync(target + '.tmp', target);
   };
 
-  let settings: Settings = { ...defaultSettings, ...read<Partial<Settings>>('settings.json', {}) };
+  const saved = read<Partial<Settings>>('settings.json', {});
+  let settings: Settings = { ...defaultSettings, ...saved };
+  // раньше один язык отвечал и за интерфейс, и за ответы — разводим их
+  if (!saved.answerLanguage) settings.answerLanguage = LANGS.has(settings.language) ? settings.language : 'ru';
+  if (!LANGS.has(settings.language)) settings.language = 'ru';
+  if (!LANGS.has(settings.answerLanguage)) settings.answerLanguage = 'ru';
 
   return {
     getSettings: () => settings,
     saveSettings(patch: Partial<Settings>) {
       settings = { ...settings, ...patch };
+      if (!LANGS.has(settings.language)) settings.language = 'ru';
+      if (!LANGS.has(settings.answerLanguage)) settings.answerLanguage = settings.language;
       write('settings.json', settings);
       return settings;
     },

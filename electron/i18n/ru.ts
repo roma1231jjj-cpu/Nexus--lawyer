@@ -38,6 +38,8 @@ export const ru = {
   'idle.silentFailed': 'тихая проверка не удалась: {error}',
   'idle.dev': 'Проверка обновлений доступна в собранной версии. Текущая: {version}',
   'idle.checkError': 'Ошибка проверки',
+  'idle.portableUpdate': 'Портативную сборку нельзя обновить на месте: скачайте новый архив с GitHub Releases и распакуйте поверх.',
+  'idle.notReady': 'Обновление ещё не загружено.',
   'idle.noNetwork': 'нет сети',
   'idle.noReleasesShort2': 'релизов на GitHub пока нет',
   'idle.downloadError': 'Ошибка загрузки',

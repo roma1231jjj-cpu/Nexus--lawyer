@@ -1,10 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { createStore } from './store';
-import { createLaws, type Article } from './laws';
+import { createLaws } from './laws';
 import { buildSources, buildSystemPrompt, listModels, offlineAnswer, streamChat, type ChatMessage } from './ai';
-import { getTemplates, fillTemplate } from './docs';
+import { getTemplates } from './docs';
+import { createCases } from './cases';
 import { createUpdater, REPO, type UpdateStatus } from './updater';
 import { resolveLang, tr } from './i18n';
 
@@ -17,6 +19,7 @@ let laws = createLaws(
   path.join(app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'resources'), 'laws'),
   path.join(app.getPath('userData'), 'laws-user')
 );
+let cases = createCases(app.getPath('userData'), store);
 let updater = createUpdater(
   (status) => win?.webContents.send('update:status', status),
   () => store.getSettings().feedUrl,
@@ -33,6 +36,8 @@ const overlayColors: Record<string, { color: string; symbolColor: string }> = {
   ivory: { color: '#eef2fb', symbolColor: '#152048' },
   aurum: { color: '#0b0a08', symbolColor: '#f6ecd8' }
 };
+
+const isWebUrl = (value: string) => /^https?:\/\//i.test(value) || /^mailto:/i.test(value);
 
 async function createWindow() {
   win = new BrowserWindow({
@@ -62,7 +67,10 @@ async function createWindow() {
   }
 
   if (store.getSettings().autoUpdate) {
-    setTimeout(() => updater.checkSilent(), 6000);
+    // решение об автопроверке принимаем в момент запуска таймера, а не до него
+    setTimeout(() => {
+      if (store.getSettings().autoUpdate) updater.checkSilent();
+    }, 6000);
   }
 
   if (shotsArg) {
@@ -101,14 +109,16 @@ async function runScreenshots() {
   app.quit();
 }
 
-const casesFile = () => store.file('cases.json');
+const ALLOWED_ANSWER = new Set(['ru', 'en', 'de']);
 
-function readCases() {
-  return store.read<any[]>('cases.json', []);
-}
+type StoredChat = { role: 'user' | 'assistant'; text: string };
 
-function writeCases(items: unknown[]) {
-  store.write('cases.json', items);
+function sanitizeChat(list: unknown): StoredChat[] {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((item) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.text === 'string')
+    .slice(-60)
+    .map((item) => ({ role: item.role as 'user' | 'assistant', text: String(item.text).slice(0, 8000) }));
 }
 
 function registerIpc() {
@@ -117,13 +127,22 @@ function registerIpc() {
     platform: process.platform,
     userData: app.getPath('userData'),
     packaged: app.isPackaged,
+    shots: Boolean(shotsArg),
     electron: process.versions.electron,
     repo: REPO
   }));
 
   ipcMain.handle('settings:get', () => store.getSettings());
   ipcMain.handle('settings:save', (_event, patch) => {
-    const next = store.saveSettings(patch);
+    const safe: Record<string, unknown> = { ...patch };
+    if (typeof safe.country === 'string') {
+      const known = laws.listCountries().some((item) => item.code === safe.country);
+      if (!known && safe.country !== 'ALL') delete safe.country;
+    }
+    if (typeof safe.language === 'string' && !ALLOWED_ANSWER.has(safe.language)) delete safe.language;
+    if (typeof safe.answerLanguage === 'string' && !ALLOWED_ANSWER.has(safe.answerLanguage)) delete safe.answerLanguage;
+    if (typeof safe.temperature === 'number') safe.temperature = Math.min(1.5, Math.max(0, safe.temperature));
+    const next = store.saveSettings(safe);
     if (patch.theme && overlayColors[patch.theme]) {
       win?.setTitleBarOverlay?.({ ...overlayColors[patch.theme], height: 44 });
       win?.setBackgroundColor(patch.theme === 'ivory' ? '#eef2fb' : patch.theme === 'aurum' ? '#0b0a08' : '#08070f');
@@ -133,33 +152,60 @@ function registerIpc() {
 
   ipcMain.handle('ai:models', (_event, settings) => listModels(settings ?? store.getSettings()));
 
-  ipcMain.handle('ai:chat', async (_event, payload: { requestId: string; messages: ChatMessage[]; query: string; country: string; sources: boolean }) => {
-    const settings = store.getSettings();
-    const country = payload.country || settings.country;
-    const countryName = laws.listCountries().find((item) => item.code === country)?.name;
-    const sources = payload.sources === false ? [] : buildSources(payload.query, country, laws, 5);
-    const system = buildSystemPrompt(sources, country, countryName, settings.language);
-    const messages: ChatMessage[] = [{ role: 'system', content: system }, ...payload.messages];
+  ipcMain.handle(
+    'ai:chat',
+    async (_event, payload: { requestId: string; messages: ChatMessage[]; query: string; country: string; sources: boolean }) => {
+      const settings = store.getSettings();
+      const country = payload.country || settings.country || 'ALL';
+      const countryName =
+        country === 'ALL' ? undefined : laws.listCountries().find((item) => item.code === country)?.name;
+      const query = String(payload.query ?? '').trim();
+      const sources = payload.sources === false ? [] : buildSources(query, country, laws, 5);
+      const system = buildSystemPrompt(sources, country, countryName, settings.answerLanguage || settings.language);
+      const history = (Array.isArray(payload.messages) ? payload.messages : []).filter(
+        (item) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string' && item.content.trim()
+      );
+      // вопрос пользователя обязательно должен попасть в запрос — раньше он терялся
+      const messages: ChatMessage[] = [{ role: 'system', content: system }, ...history, { role: 'user', content: query }];
 
-    const controller = new AbortController();
-    streams.set(payload.requestId, controller);
-    const result = await streamChat({
-      settings,
-      messages,
-      signal: controller.signal,
-      onDelta: (delta) => send('ai:chunk', { requestId: payload.requestId, delta })
-    });
-    streams.delete(payload.requestId);
+      const controller = new AbortController();
+      streams.set(payload.requestId, controller);
+      const result = await streamChat({
+        settings,
+        messages,
+        signal: controller.signal,
+        onDelta: (delta) => send('ai:chunk', { requestId: payload.requestId, delta })
+      });
+      streams.delete(payload.requestId);
 
-    if (result.error || !result.text.trim()) {
-      return { text: offlineAnswer(payload.query, sources, countryName, settings.language), sources, error: result.error, mode: 'offline' };
+      if (result.cancelled) {
+        return { text: result.text, sources, mode: 'ai', cancelled: true };
+      }
+      if (result.error || !result.text.trim()) {
+        return {
+          text: result.text || offlineAnswer(query, sources, countryName, settings.answerLanguage || settings.language),
+          sources,
+          error: result.error,
+          mode: result.text ? 'ai' : 'offline'
+        };
+      }
+      return { text: result.text, sources, mode: 'ai' };
     }
-    return { text: result.text, sources, mode: 'ai' };
-  });
+  );
 
   ipcMain.handle('ai:stop', (_event, requestId: string) => {
     streams.get(requestId)?.abort();
     streams.delete(requestId);
+    return true;
+  });
+
+  ipcMain.handle('chat:load', () => store.read<StoredChat[]>('chat.json', []));
+  ipcMain.handle('chat:save', (_event, list: unknown) => {
+    store.write('chat.json', sanitizeChat(list));
+    return true;
+  });
+  ipcMain.handle('chat:clear', () => {
+    store.write('chat.json', []);
     return true;
   });
 
@@ -168,95 +214,124 @@ function registerIpc() {
     counts: laws.totalByCountry(),
     total: laws.counts()
   }));
-  ipcMain.handle('laws:search', (_event, payload: { query: string; country?: string }) => laws.search(payload.query, payload.country, 40));
+  ipcMain.handle('laws:search', (_event, payload: { query: string; country?: string }) =>
+    laws.search(payload.query, payload.country, 40)
+  );
   ipcMain.handle('laws:country', (_event, country: string) => ({
     articles: laws.byCountry(country),
     codes: laws.codesByCountry(country)
   }));
+  ipcMain.handle('laws:packs', () => laws.packs());
+  ipcMain.handle('laws:pack-remove', (_event, name: string) => {
+    const safe = path.basename(String(name ?? ''));
+    const target = path.join(app.getPath('userData'), 'laws-user', safe);
+    if (!safe.endsWith('.json') || !fs.existsSync(target)) return { ok: false };
+    try {
+      fs.rmSync(target, { force: true });
+      laws.reload();
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  });
   ipcMain.handle('laws:import', async () => {
     const result = await dialog.showOpenDialog(win!, {
       title: trNow('dialog.importTitle'),
       filters: [{ name: trNow('dialog.importFilter'), extensions: ['json'] }],
       properties: ['openFile', 'multiSelections']
     });
-    if (result.canceled) return { imported: 0, failed: 0, canceled: true };
+    if (result.canceled) return { imported: 0, skipped: 0, failed: 0, canceled: true, files: [] };
     const dir = path.join(app.getPath('userData'), 'laws-user');
     fs.mkdirSync(dir, { recursive: true });
     let imported = 0;
+    let skipped = 0;
     let failed = 0;
+    const files: { name: string; added: number; skipped: number; errors: string[] }[] = [];
     for (const file of result.filePaths) {
+      const base = path.basename(file);
       try {
-        const pack = JSON.parse(fs.readFileSync(file, 'utf8'));
-        const articles = Array.isArray(pack?.articles) ? pack.articles : [];
-        if (!articles.length) {
+        const raw = fs.readFileSync(file, 'utf8');
+        const pack = JSON.parse(raw);
+        const outcome = laws.importPack(pack, true);
+        if (!outcome.added && outcome.skipped === 0) {
           failed += 1;
+          files.push({ name: base, added: 0, skipped: 0, errors: outcome.errors.length ? outcome.errors : ['нет статей'] });
           continue;
         }
-        const name = path.basename(file);
-        fs.writeFileSync(path.join(dir, `${Date.now()}-${name}`), JSON.stringify(pack, null, 2));
-        imported += articles.length;
-      } catch {
+        // имя пакета уникально: содержимое + время, два файла с одним basename не перетираются
+        const stamp = crypto.createHash('sha1').update(raw).digest('hex').slice(0, 10);
+        const target = path.join(dir, `${stamp}-${Date.now().toString(36)}-${base}`);
+        fs.writeFileSync(target, JSON.stringify(pack, null, 2), 'utf8');
+        imported += outcome.added;
+        skipped += outcome.skipped;
+        files.push({ name: base, added: outcome.added, skipped: outcome.skipped, errors: outcome.errors });
+      } catch (error) {
         failed += 1;
-        continue;
+        files.push({ name: base, added: 0, skipped: 0, errors: [error instanceof Error ? error.message : 'bad json'] });
       }
     }
     laws.reload();
-    return { imported, failed, canceled: false };
+    return { imported, skipped, failed, canceled: false, files };
   });
 
-  ipcMain.handle('cases:list', () => readCases());
-  ipcMain.handle('cases:save', (_event, item) => {
-    const items = readCases();
-    const index = items.findIndex((entry) => entry.id === item.id);
-    const next = { ...item, updatedAt: new Date().toISOString() };
-    if (index >= 0) items[index] = next;
-    else items.unshift(next);
-    writeCases(items);
-    return next;
-  });
-  ipcMain.handle('cases:delete', (_event, id: string) => {
-    writeCases(readCases().filter((entry) => entry.id !== id));
-    return true;
-  });
+  ipcMain.handle('cases:list', () => cases.list());
+  ipcMain.handle('cases:save', (_event, item) => cases.save(item));
+  ipcMain.handle('cases:delete', (_event, id: string) => cases.remove(id));
+  ipcMain.handle('cases:note', (_event, payload: { id: string; text: string }) =>
+    cases.appendNote(payload?.id, String(payload?.text ?? ''))
+  );
   ipcMain.handle('cases:attach', async (_event, id: string) => {
-    const items = readCases();
-    const item = items.find((entry) => entry.id === id);
-    if (!item) return { files: [], saved: false, canceled: false };
+    const item = cases.list().find((entry) => entry.id === id);
+    if (!item) return { ok: false, error: 'not found', files: [] };
     const result = await dialog.showOpenDialog(win!, { title: trNow('dialog.attachTitle'), properties: ['openFile', 'multiSelections'] });
-    if (result.canceled) return { files: item.files ?? [], saved: true, canceled: true };
-    const dir = path.join(app.getPath('userData'), 'cases', id);
+    if (result.canceled) return { ok: true, files: item.files, canceled: true };
+    return cases.attach(id, result.filePaths);
+  });
+  ipcMain.handle('cases:removeFile', (_event, payload: { id: string; path: string }) => cases.removeFile(payload?.id, String(payload?.path ?? '')));
+  ipcMain.handle('cases:openFile', async (_event, target: string) => {
+    if (!cases.inside(target)) return { ok: false, error: 'outside' };
+    if (!fs.existsSync(target)) return { ok: false, error: 'missing' };
+    const error = await shell.openPath(target);
+    return { ok: !error, error: error || undefined };
+  });
+  ipcMain.handle('cases:reveal', async (_event, id: string) => {
+    const dir = cases.folder(id);
     fs.mkdirSync(dir, { recursive: true });
-    for (const source of result.filePaths) {
-      const target = path.join(dir, path.basename(source));
-      fs.copyFileSync(source, target);
-      const size = fs.statSync(target).size;
-      item.files = [...(item.files ?? []), { name: path.basename(source), path: target, size, addedAt: new Date().toISOString() }];
-    }
-    writeCases(items);
-    return { files: item.files, saved: true, canceled: false };
+    const error = await shell.openPath(dir);
+    return { ok: !error, error: error || undefined };
   });
-  ipcMain.handle('cases:openFile', (_event, target: string) => {
-    if (fs.existsSync(target)) shell.openPath(target);
-    return true;
-  });
-  ipcMain.handle('cases:reveal', (_event, id: string) => shell.openPath(path.join(app.getPath('userData'), 'cases', id)));
   ipcMain.handle('cases:openFolder', () => shell.openPath(app.getPath('userData')));
 
-  ipcMain.handle('docs:templates', () => getTemplates(resolveLang(store.getSettings().language)));
-  ipcMain.handle('docs:export', async (_event, payload: { name: string; text: string; format: 'txt' | 'md' | 'doc' }) => {
-    const ext = payload.format;
+  ipcMain.handle('docs:templates', () => {
+    const answer = store.getSettings().answerLanguage || store.getSettings().language;
+    // шаблоны документов бывают только русские и английские: немецкий ответ не должен ронять экран
+    const lang = answer === 'en' ? 'en' : 'ru';
+    return getTemplates(lang, store.getSettings().country);
+  });
+  ipcMain.handle('docs:export', async (_event, payload: { name: string; text: string; format: 'txt' | 'md' | 'rtf' }) => {
+    const format = payload.format === 'rtf' || payload.format === 'md' ? payload.format : 'txt';
     const result = await dialog.showSaveDialog(win!, {
       title: trNow('dialog.saveDocTitle'),
-      defaultPath: `${payload.name}.${ext}`,
-      filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+      defaultPath: `${payload.name}.${format}`,
+      filters: [{ name: format.toUpperCase(), extensions: [format] }]
     });
     if (result.canceled || !result.filePath) return { saved: false };
     let content = payload.text;
-    if (ext === 'doc') {
-      content = `<html><head><meta charset="utf-8"><style>body{font-family:Georgia,serif;font-size:14pt;line-height:1.5;max-width:720px;margin:40px auto;white-space:pre-wrap}</style></head><body>${payload.text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')}</body></html>`;
+    if (format === 'rtf') {
+      const body = payload.text
+        .replace(/\\/g, '\\\\')
+        .replace(/[{}]/g, (match) => `\\${match}`)
+        .split('\n')
+        .map((line) =>
+          [...line]
+            .map((char) => {
+              const code = char.codePointAt(0) ?? 0;
+              return code > 127 ? `\\u${code}?` : char;
+            })
+            .join('')
+        )
+        .join('\\par\n');
+      content = `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Georgia;}}{\\f0\\fs28 ${body}}}`;
     }
     fs.writeFileSync(result.filePath, content, 'utf8');
     return { saved: true, path: result.filePath };
@@ -269,7 +344,11 @@ function registerIpc() {
   ipcMain.handle('update:install', () => updater.install());
   ipcMain.handle('update:status', () => updater.status());
 
-  ipcMain.handle('shell:open', (_event, url: string) => shell.openExternal(url));
+  ipcMain.handle('shell:open', (_event, url: string) => {
+    if (!isWebUrl(String(url ?? ''))) return { ok: false, error: 'blocked' };
+    void shell.openExternal(url);
+    return { ok: true };
+  });
   ipcMain.handle('window:minimize', () => win?.minimize());
   ipcMain.handle('window:maximize', () => (win?.isMaximized() ? win.unmaximize() : win?.maximize()));
   ipcMain.handle('window:close', () => win?.close());

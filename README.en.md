@@ -24,16 +24,16 @@ Three themes, the same across every Nexus app: Midnight (black + violet), Ivory 
 
 - The **RU / EN** switch lives in Settings, in the Interface block. It applies instantly: menus, headings, buttons, hints, errors and placeholders all change.
 - The choice is stored in `localStorage` (`nl-lang`) and in the settings file, so the next launch opens in the selected language. Russian is the default.
-- Switching the interface language also sets the answer language of the model; the separate Answer language option lets us keep an English interface with Russian, English or German answers.
-- Russian-law forms (`electron/docs.ts`) and the wording of norms (`electron/laws.ts`, `resources/laws/*.json`) stay in Russian in any interface language — that is the content of Russian law, not UI labels. The English Documents screen says so explicitly.
+- The answer language is its own Answer language option: the interface can be English while explanations are Russian (or the other way round), plus German.
+- Document templates (`electron/docs.ts`) are Russian-law forms: with another country selected the screen disables export until the user confirms the document is prepared under Russian law. The wording of norms (`resources/laws/*.json`) stays in the language of that law.
 - The demo conversation on the Consultation screen is served in the selected language as well.
 
 ## What it does
 
 - **Consultation.** An answer with references to articles: the model receives excerpts from the local database (RAG) and must cite the norms. Without a model the reference mode still finds the relevant norms for a query.
-- **Laws.** 16 countries, 228 norms: the Russian Constitution, civil, labour, criminal, administrative, housing, family, tax and procedural codes, consumer protection, BGB, Code civil, UCC, Limitation Act, Codice civile, Código Civil, KC, TBK, the civil codes of Kazakhstan, Belarus, Ukraine and China, Minpō, UAE and Indian law. Search across all countries, import your own JSON packs.
-- **Documents.** Six templates: pre-trial claim, court order application, labour application, consumer claim, lease agreement, power of attorney. Fields are substituted into the text, export to `.doc`, `.md`, `.txt`.
-- **Cases.** Cards with client, status, notes and attachments. Everything stays local in `%APPDATA%\nexus-lawyer`.
+- **Laws.** 16 countries, 228 norms: the Russian Constitution, civil, labour, criminal, administrative, housing, family, tax and procedural codes, consumer protection, BGB, Code civil, UCC, Limitation Act, Codice civile, Código Civil, KC, TBK, the civil codes of Kazakhstan, Belarus, Ukraine and China, Minpō, UAE and Indian law. The default country is “All countries”, so search covers the whole database rather than only Russia. Your own JSON packs are imported with schema validation, and the pack list can be reviewed and cleaned up.
+- **Documents.** Six templates: pre-trial claim, court order application, labour application, consumer claim, lease agreement, power of attorney. Nothing is invented: an empty field stays as a “укажите” marker, and export buttons stay disabled until the required data is there. Amounts (`85 000`, `85,50`, `1 234 567,89`), dates, tax IDs, bank account and BIC are validated. Export to `.txt`, `.md`, `.rtf`.
+- **Cases.** Cards with client, status, notes and attachments. An unsaved draft survives switching sections and a version conflict never overwrites your edits. Everything stays local in `%APPDATA%\Nexus-Юрист`.
 - **Three themes.** Midnight (black + violet), Ivory (white + blue), Aurum (graphite + gold). Glassmorphism, no generic AI-looking default.
 - **Model of your choice.** Ollama, llama.cpp, Ada 4B (127.0.0.1:8090), Nexus-Harness (:8848) or any OpenAI-compatible API, cloud included.
 
@@ -41,9 +41,9 @@ Three themes, the same across every Nexus app: Midnight (black + violet), Ivory 
 
 | Format | File | Folder |
 |---|---|---|
-| Portable exe | `nexus-lawyer-1.0.0-portable.exe` | `release-portable-exe/` |
-| Portable zip | `nexus-lawyer-1.0.0-portable.zip` | `release-portable-zip/` |
-| NSIS installer | `nexus-lawyer-setup-1.0.0.exe` | `release-installer/` |
+| Portable exe | `nexus-lawyer-1.0.3-portable.exe` | `release-portable-exe/` |
+| Portable zip | `nexus-lawyer-1.0.3-portable.zip` | `release-portable-zip/` |
+| NSIS installer | `nexus-lawyer-setup-1.0.3.exe` | `release-installer/` |
 
 The portable builds only need to be unpacked and run — they do not touch the registry. The installer puts the app into the user profile (no administrator rights), creates shortcuts and supports auto-updates.
 
@@ -57,7 +57,7 @@ npm run build    # main + renderer
 
 ## Updates and release repository
 
-- `electron-updater` with the GitHub provider (`roma1231jjj-cpu/Nexus--lawyer`) or a custom generic server (the Custom update server field in Settings).
+- `electron-updater` with the GitHub provider (`roma1231jjj-cpu/nexus-lawyer`) or a custom generic server (the Custom update server field in Settings).
 - `stable` / `beta` (prerelease) channels.
 - The version log lives in `resources/versions.json` and is shown in the Versions tab.
 - Every build is copied to `versions/v<version>/` together with a manifest and SHA-256.
@@ -81,7 +81,8 @@ npm run dist
 npm install
 npm run dev      # Vite + Electron
 npm run build    # main + renderer
-npm run shots    # 5 screenshots into screenshots/ (three themes)
+npm run shots    # 9 screenshots (three themes, RU/EN)
+npm test         # 13 tests: search, import, prompt, answer stream
 npm run dist     # portable exe + portable zip + installer
 ```
 
@@ -113,7 +114,13 @@ versions/        release manifests and artifact copies (local)
 }
 ```
 
-Import: Laws tab → “Import a pack”.
+Import: Laws tab → “Import a pack”. Packs are validated against the schema: records without `number`/`title`/`text` are dropped with a message, and a broken file never damages the database.
+
+## What the app does not do
+
+- It does not invent requisites, amounts, city or dates — anything missing stays as a marker.
+- It does not certify that a norm is current: excerpts carry no “verified” status, so the app keeps reminding you to check the official text (pravo.gov.ru and equivalents).
+- It does not draft documents under foreign law: the templates are Russian, export for another jurisdiction requires explicit confirmation, while norms and explanations cover every country in the database.
 
 ## License
 

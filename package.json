@@ -1,7 +1,7 @@
 {
   "name": "nexus-lawyer",
   "productName": "Nexus-Юрист",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Nexus-Юрист — правовой помощник с ИИ и законами стран мира",
   "author": {
     "name": "Nexus × АутSquad",
@@ -16,6 +16,7 @@
     "build:renderer": "vite build",
     "build": "npm run build:main && npm run build:renderer",
     "shots": "node scripts/screenshots.mjs",
+    "test": "node --test scripts/test.mjs",
     "icon": "node scripts/make-icon.mjs",
     "dist": "node scripts/make-icon.mjs && npm run build && node scripts/dist.mjs"
   },

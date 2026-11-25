@@ -40,6 +40,8 @@ export const en: Record<MainKey, string> = {
   'idle.silentFailed': 'silent check failed: {error}',
   'idle.dev': 'The update check works in the packaged build. Current: {version}',
   'idle.checkError': 'Check failed',
+  'idle.portableUpdate': 'A portable build cannot update in place: download the new archive from GitHub Releases and unpack it over the old one.',
+  'idle.notReady': 'The update has not been downloaded yet.',
   'idle.noNetwork': 'no network',
   'idle.noReleasesShort2': 'no releases on GitHub yet',
   'idle.downloadError': 'Download failed',

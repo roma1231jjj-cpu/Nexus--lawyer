@@ -100,11 +100,17 @@ export default function UpdatesView({ info, settings, update, setUpdate }: Props
                 </button>
               )}
               {update.stage === 'ready' && (
-                <button className="btn primary" onClick={() => api.installUpdate()}>
+                <button
+                  className="btn primary"
+                  onClick={async () => {
+                    const result = await api.installUpdate().catch(() => ({ ok: false, portable: false, message: undefined }));
+                    if (!result.ok && result.message) setUpdate({ stage: 'error', message: result.message });
+                  }}
+                >
                   <IconCheck size={14} /> {t('updates.install')}
                 </button>
               )}
-              <button className="btn ghost" onClick={() => api.open('https://github.com/roma1231jjj-cpu/Nexus--lawyer/releases')}>
+              <button className="btn ghost" onClick={() => api.open('https://github.com/roma1231jjj-cpu/nexus-lawyer/releases')}>
                 {t('updates.githubReleases')}
               </button>
             </div>

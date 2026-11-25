@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, type Article, type Country } from '../api';
-import { IconArrow, IconDownload, IconSearch, IconSpark } from '../components/Icons';
+import { IconArrow, IconDownload, IconSearch, IconSpark, IconTrash } from '../components/Icons';
 import { countryLabel, countryMeta, useLang, useT, regionLabel } from '../i18n';
 
 type Props = {
@@ -9,10 +9,13 @@ type Props = {
   total: { articles: number; countries: number };
   country: string;
   onCountry: (code: string) => void;
-  onAsk: (question: string) => void;
+  onAsk: (question: string, country: string) => void;
+  onImported?: () => void | Promise<void>;
 };
 
-export default function LawsView({ countries, counts, total, country, onCountry, onAsk }: Props) {
+type Hit = { article: Article; score: number };
+
+export default function LawsView({ countries, counts, total, country, onCountry, onAsk, onImported }: Props) {
   const t = useT();
   const lang = useLang();
   const [articles, setArticles] = useState<Article[]>([]);
@@ -20,8 +23,15 @@ export default function LawsView({ countries, counts, total, country, onCountry,
   const [openId, setOpenId] = useState<string | null>(null);
   const [activeCode, setActiveCode] = useState('ALL');
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<{ article: Article; score: number }[] | null>(null);
-  const [imported, setImported] = useState<string | null>(null);
+  const [results, setResults] = useState<{ hits: Hit[]; total: number; truncated: boolean } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [packs, setPacks] = useState<{ file: string; articles: number; errors: string[]; dir: 'bundled' | 'user' }[]>([]);
+  const [packsOpen, setPacksOpen] = useState(false);
+
+  const loadPacks = useCallback(async () => {
+    const list = await api.lawsPacks().catch(() => []);
+    setPacks(list);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +55,10 @@ export default function LawsView({ countries, counts, total, country, onCountry,
   }, [country]);
 
   useEffect(() => {
+    void loadPacks();
+  }, [loadPacks]);
+
+  useEffect(() => {
     const value = query.trim();
     if (value.length < 3) {
       setResults(null);
@@ -53,40 +67,64 @@ export default function LawsView({ countries, counts, total, country, onCountry,
     const timer = setTimeout(() => {
       api
         .lawsSearch({ query: value, country: 'ALL' })
-        .then(setResults)
-        .catch(() => setResults([]));
+        .then((data) => setResults(data ?? { hits: [], total: 0, truncated: false }))
+        .catch(() => setResults({ hits: [], total: 0, truncated: false }));
     }, 220);
     return () => clearTimeout(timer);
   }, [query]);
 
   const current = countries.find((item) => item.code === country);
-  const meta = countryMeta(country, lang, current?.system, current?.note);
+  const meta = country === 'ALL'
+    ? { system: t('laws.allSystems'), note: '' }
+    : countryMeta(country, lang, current?.system, current?.note);
   const list = useMemo(() => {
-    if (results) return results.map((hit) => hit.article);
+    if (results) return results.hits.map((hit) => hit.article);
     return activeCode === 'ALL' ? articles : articles.filter((article) => article.code === activeCode);
   }, [results, activeCode, articles]);
+
+  const flash = (text: string) => {
+    setNotice(text);
+    setTimeout(() => setNotice(null), 6000);
+  };
 
   const importPack = async () => {
     try {
       const result = await api.lawsImport();
       if (result.canceled) return;
+      const parts: string[] = [];
+      if (result.imported > 0) parts.push(t('laws.imported', { n: result.imported }));
+      if (result.skipped > 0) parts.push(t('laws.skipped', { n: result.skipped }));
+      if (result.failed > 0) parts.push(t('laws.importFailed', { n: result.failed }));
+      const broken = result.files.find((file) => file.errors.length);
+      if (broken) parts.push(`${broken.name}: ${broken.errors[0]}`);
+      flash(parts.length ? parts.join(' · ') : t('laws.importEmpty'));
       if (result.imported > 0) {
-        setImported(t('laws.imported', { n: result.imported }));
         const data = await api.lawsCountry(country);
         setArticles(data.articles);
         setCodes(data.codes);
-        setTimeout(() => setImported(null), 4000);
-        return;
-      }
-      if ((result.failed ?? 0) > 0) {
-        setImported(t('laws.importFailed', { n: result.failed ?? 0 }));
-        setTimeout(() => setImported(null), 6000);
+        await loadPacks();
+        await onImported?.();
       }
     } catch (error) {
-      setImported(t('laws.importError', { error: error instanceof Error ? error.message : String(error) }));
-      setTimeout(() => setImported(null), 6000);
+      flash(t('laws.importError', { error: error instanceof Error ? error.message : String(error) }));
     }
   };
+
+  const removePack = async (file: string) => {
+    const result = await api.lawsPackRemove(file).catch(() => ({ ok: false }));
+    if (!result.ok) {
+      flash(t('laws.packRemoveFailed'));
+      return;
+    }
+    await loadPacks();
+    await onImported?.();
+    const data = await api.lawsCountry(country);
+    setArticles(data.articles);
+    setCodes(data.codes);
+    flash(t('laws.packRemoved'));
+  };
+
+  const userPacks = packs.filter((pack) => pack.dir === 'user');
 
   return (
     <div className="split">
@@ -102,6 +140,20 @@ export default function LawsView({ countries, counts, total, country, onCountry,
           </div>
         </div>
         <div className="side-panel-body">
+          <button
+            className={`country-item ${country === 'ALL' && !results ? 'active' : ''}`}
+            onClick={() => {
+              setQuery('');
+              onCountry('ALL');
+            }}
+          >
+            <span className="country-flag">{t('laws.allBadge')}</span>
+            <span>
+              <span className="country-name">{t('laws.allCountries')}</span>
+              <span className="country-region">{t('laws.allSystems')}</span>
+            </span>
+            <span className="country-count num">{total.articles}</span>
+          </button>
           {countries.map((item) => {
             const stat = counts[item.code];
             return (
@@ -122,11 +174,36 @@ export default function LawsView({ countries, counts, total, country, onCountry,
               </button>
             );
           })}
-          <div style={{ padding: '10px 6px 4px' }}>
+          <div style={{ padding: '10px 6px 4px', display: 'grid', gap: 6 }}>
             <button className="btn ghost sm" style={{ width: '100%' }} onClick={importPack}>
               <IconDownload size={13} /> {t('laws.import')}
             </button>
-            {imported && <div className="hint-line">{imported}</div>}
+            <button className="btn ghost sm" style={{ width: '100%' }} onClick={() => setPacksOpen((prev) => !prev)}>
+              {t('laws.packs')} · {packs.length}
+            </button>
+            {packsOpen && (
+              <div style={{ display: 'grid', gap: 4 }}>
+                {packs.length === 0 && <div className="hint-line">{t('laws.packsEmpty')}</div>}
+                {packs.map((pack) => (
+                  <div
+                    key={pack.dir + pack.file}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '2px 2px' }}
+                    title={pack.errors.length ? pack.errors.join('; ') : `${pack.articles}`}
+                  >
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {pack.file}
+                    </span>
+                    <span className="num dim">{pack.articles}</span>
+                    {pack.dir === 'user' && (
+                      <button className="mini-btn" onClick={() => void removePack(pack.file)} title={t('laws.packRemove')}>
+                        <IconTrash size={12} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {notice && <div className="hint-line">{notice}</div>}
           </div>
         </div>
       </div>
@@ -134,10 +211,20 @@ export default function LawsView({ countries, counts, total, country, onCountry,
       <div className="law-pane">
         <div className="law-head">
           <div className="law-title">
-            <span className="flag-code">{results ? t('laws.allBadge') : current?.code ?? '—'}</span>
+            <span className="flag-code">{results ? t('laws.allBadge') : current?.code ?? t('laws.allBadge')}</span>
             <div>
-              <h2>{results ? t('laws.searchResults') : countryLabel(country, current?.name, lang) || t('laws.laws')}</h2>
-              <div className="sys">{results ? t('laws.query', { q: query }) : meta.system}</div>
+              <h2>
+                {results
+                  ? t('laws.searchResults')
+                  : country === 'ALL'
+                    ? t('laws.allCountries')
+                    : countryLabel(country, current?.name, lang) || t('laws.laws')}
+              </h2>
+              <div className="sys">
+                {results
+                  ? `${t('laws.query', { q: query })}${results.truncated ? ` · ${t('laws.truncated', { n: results.total })}` : ''}`
+                  : meta.system}
+              </div>
             </div>
             <span className="badge" style={{ marginLeft: 'auto' }}>{t('laws.articles', { n: list.length })}</span>
           </div>
@@ -154,6 +241,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
             </div>
           )}
           {!results && meta.note && <div className="hint-line">{meta.note}</div>}
+          {country !== 'ALL' && !results && <div className="hint-line">{t('laws.currencyHint')}</div>}
         </div>
 
         <div className="article-list">
@@ -162,7 +250,6 @@ export default function LawsView({ countries, counts, total, country, onCountry,
           )}
           {list.map((article) => {
             const open = openId === article.id;
-            const flag = article.country;
             return (
               <div key={article.id} className={`article ${open ? 'open' : ''}`}>
                 <button className="article-head" onClick={() => setOpenId(open ? null : article.id)} aria-expanded={open}>
@@ -170,7 +257,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
                   <span className="article-main">
                     <span className="article-title">{article.title}</span>
                     <span className="article-code">
-                      {results ? `${flag} · ` : ''}
+                      {results || country === 'ALL' ? `${countryLabel(article.country, undefined, lang)} · ` : ''}
                       {article.code}
                     </span>
                   </span>
@@ -179,23 +266,35 @@ export default function LawsView({ countries, counts, total, country, onCountry,
                 {open && (
                   <div className="article-body">
                     {article.text}
+                    {article.status && article.status !== 'active' && (
+                      <div className="hint-line" style={{ marginTop: 8 }}>{t('laws.unverified')}</div>
+                    )}
                     <div className="tags">
                       {(article.tags ?? []).map((tag) => (
                         <span className="tag" key={tag}>#{tag}</span>
                       ))}
+                      {article.revisedAt && <span className="tag">ред. {article.revisedAt}</span>}
                     </div>
                     <div className="actions">
                       <button
                         className="btn sm"
                         onClick={() =>
-                          onAsk(t('laws.askPrompt', { code: article.code, number: article.number, title: article.title }))
+                          onAsk(t('laws.askPrompt', { code: article.code, number: article.number, title: article.title }), article.country)
                         }
                       >
                         <IconSpark size={13} /> {t('laws.askAi')}
                       </button>
-                      <button className="btn ghost sm" onClick={() => navigator.clipboard?.writeText(`${article.code}, ${article.number}. ${article.title}\n\n${article.text}`)}>
+                      <button
+                        className="btn ghost sm"
+                        onClick={() => navigator.clipboard?.writeText(`${article.code}, ${article.number}. ${article.title}\n\n${article.text}`)}
+                      >
                         {t('laws.copy')}
                       </button>
+                      {article.sourceUrl && (
+                        <button className="btn ghost sm" onClick={() => void api.open(article.sourceUrl!)}>
+                          {t('laws.source')}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

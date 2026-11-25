@@ -10,6 +10,7 @@ export type Settings = {
   theme: Theme;
   channel: 'stable' | 'beta';
   language: string;
+  answerLanguage: string;
   feedUrl: string;
   autoUpdate: boolean;
   country: string;
@@ -24,6 +25,10 @@ export type Article = {
   title: string;
   text: string;
   tags?: string[];
+  sourceUrl?: string;
+  revisedAt?: string;
+  checkedAt?: string;
+  status?: 'active' | 'unknown';
 };
 
 export type Country = {
@@ -46,6 +51,8 @@ export type ChatMessage = {
   mode?: 'ai' | 'offline';
   error?: string;
   pending?: boolean;
+  cancelled?: boolean;
+  country?: string;
 };
 
 export type CaseFile = { name: string; path: string; size: number; addedAt: string };
@@ -63,8 +70,24 @@ export type LegalCase = {
   updatedAt: string;
 };
 
-export type DocField = { key: string; label: string; placeholder?: string; multiline?: boolean };
-export type DocTemplate = { id: string; name: string; group: string; summary: string; fields: DocField[]; body: string; law: string };
+export type DocField = {
+  key: string;
+  label: string;
+  placeholder?: string;
+  multiline?: boolean;
+  kind?: 'text' | 'date' | 'money' | 'checkbox' | 'select';
+  options?: { value: string; label: string }[];
+};
+export type DocTemplate = {
+  id: string;
+  name: string;
+  group: string;
+  summary: string;
+  fields: DocField[];
+  body: string;
+  law: string;
+  country?: string;
+};
 
 export type VersionEntry = {
   version: string;
@@ -83,31 +106,38 @@ export type UpdateStatus = {
 };
 
 export type Api = {
-  info(): Promise<{ version: string; platform: string; userData: string; packaged: boolean; electron: string; repo: { owner: string; repo: string } }>;
+  info(): Promise<{ version: string; platform: string; userData: string; packaged: boolean; shots?: boolean; electron: string; repo: { owner: string; repo: string } }>;
   getSettings(): Promise<Settings>;
   saveSettings(patch: Partial<Settings>): Promise<Settings>;
   models(settings?: Settings): Promise<{ models: string[]; ok: boolean; error?: string }>;
-  chat(payload: { requestId: string; messages: { role: string; content: string }[]; query: string; country: string; sources?: boolean }): Promise<{ text: string; sources: Source[]; error?: string; mode: 'ai' | 'offline' }>;
+  chat(payload: { requestId: string; messages: { role: string; content: string }[]; query: string; country: string; sources?: boolean }): Promise<{ text: string; sources: Source[]; error?: string; mode: 'ai' | 'offline'; cancelled?: boolean }>;
   stop(requestId: string): Promise<boolean>;
   onChunk(handler: (payload: { requestId: string; delta: string }) => void): () => void;
   lawsOverview(): Promise<{ countries: Country[]; counts: Record<string, { name: string; flag: string; count: number }>; total: { articles: number; countries: number } }>;
-  lawsSearch(payload: { query: string; country?: string }): Promise<{ article: Article; score: number }[]>;
+  lawsSearch(payload: { query: string; country?: string }): Promise<{ hits: { article: Article; score: number }[]; total: number; truncated: boolean }>;
   lawsCountry(country: string): Promise<{ articles: Article[]; codes: { code: string; short: string; count: number }[] }>;
-  lawsImport(): Promise<{ imported: number; failed?: number; canceled?: boolean }>;
+  lawsImport(): Promise<{ imported: number; skipped: number; failed: number; canceled?: boolean; files: { name: string; added: number; skipped: number; errors: string[] }[] }>;
+  lawsPacks(): Promise<{ file: string; articles: number; errors: string[]; dir: 'bundled' | 'user' }[]>;
+  lawsPackRemove(name: string): Promise<{ ok: boolean }>;
+  chatHistory(): Promise<ChatMessage[]>;
+  saveChat(list: ChatMessage[]): Promise<boolean>;
+  clearChat(): Promise<boolean>;
   cases(): Promise<LegalCase[]>;
-  saveCase(item: LegalCase): Promise<LegalCase>;
-  deleteCase(id: string): Promise<boolean>;
-  attach(id: string): Promise<{ files: CaseFile[]; saved?: boolean; canceled?: boolean }>;
-  openFile(target: string): Promise<boolean>;
-  revealCase(id: string): Promise<boolean>;
+  saveCase(item: LegalCase): Promise<{ ok: boolean; item?: LegalCase; error?: string; current?: LegalCase }>;
+  deleteCase(id: string): Promise<{ ok: boolean; error?: string }>;
+  caseNote(id: string, text: string): Promise<{ ok: boolean; item?: LegalCase; error?: string }>;
+  attach(id: string): Promise<{ ok: boolean; files: CaseFile[]; canceled?: boolean; error?: string }>;
+  removeCaseFile(id: string, target: string): Promise<{ ok: boolean; item?: LegalCase; error?: string }>;
+  openFile(target: string): Promise<{ ok: boolean; error?: string }>;
+  revealCase(id: string): Promise<{ ok: boolean; error?: string }>;
   openDataFolder(): Promise<boolean>;
   templates(): Promise<DocTemplate[]>;
-  exportDoc(payload: { name: string; text: string; format: 'txt' | 'md' | 'doc' }): Promise<{ saved: boolean; path?: string }>;
+  exportDoc(payload: { name: string; text: string; format: 'txt' | 'md' | 'rtf' }): Promise<{ saved: boolean; path?: string }>;
   localVersions(): Promise<VersionEntry[]>;
   remoteVersions(): Promise<{ ok: boolean; items: { tag: string; name: string; publishedAt: string; prerelease: boolean; notes: string; assets: { name: string; size: number; url: string }[] }[]; error?: string }>;
   checkUpdate(): Promise<UpdateStatus>;
   downloadUpdate(): Promise<UpdateStatus>;
-  installUpdate(): void;
+  installUpdate(): Promise<{ ok: boolean; portable: boolean; message?: string }>;
   updateStatus(): Promise<UpdateStatus>;
   onUpdate(handler: (status: UpdateStatus) => void): () => void;
   open(url: string): Promise<boolean>;
@@ -120,6 +150,7 @@ declare global {
   interface Window {
     nexus?: Api;
     __nexusShots?: { set: (theme: Theme, view: string, lang?: 'ru' | 'en') => void };
+    __nexusDemo?: boolean;
   }
 }
 
