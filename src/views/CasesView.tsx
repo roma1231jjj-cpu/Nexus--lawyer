@@ -222,6 +222,11 @@ export default function CasesView({ cases, country, onChange }: Props) {
     await onChange();
   };
 
+  const openFile = async (path: string) => {
+    const result = await api.openFile(path).catch(() => null);
+    if (!result?.ok) setFlash(t('cases.openFailed'));
+  };
+
   const addNote = async () => {
     if (!note.trim()) return;
     if (dirtyRef.current && cases.some((item) => item.id === draft.id)) {
@@ -402,7 +407,7 @@ export default function CasesView({ cases, country, onChange }: Props) {
               <div className="file-row" key={file.path}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
                 <span className="num dim tiny" style={{ marginLeft: 'auto' }}>{t('cases.kb', { n: Math.max(1, Math.round(file.size / 1024)) })}</span>
-                <button onClick={() => api.openFile(file.path)} aria-label={`${t('cases.open')}: ${file.name}`}>{t('cases.open')}</button>
+                <button onClick={() => void openFile(file.path)} aria-label={`${t('cases.open')}: ${file.name}`}>{t('cases.open')}</button>
                 <button onClick={() => void removeFile(file.path)} aria-label={`${t('cases.delete')}: ${file.name}`}>{t('cases.delete')}</button>
               </div>
             ))}
