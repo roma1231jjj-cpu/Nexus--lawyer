@@ -332,6 +332,7 @@ function registerIpc() {
     return { ok: !error, error: error || undefined };
   });
   ipcMain.handle('cases:reveal', async (_event, id: string) => {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(id ?? ''))) return { ok: false, error: 'bad id' };
     const dir = cases.folder(id);
     fs.mkdirSync(dir, { recursive: true });
     const error = await shell.openPath(dir);

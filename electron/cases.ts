@@ -20,9 +20,12 @@ export type LegalCase = {
 const now = () => new Date().toISOString();
 
 const clean = (value: unknown, max: number) => String(value ?? '').slice(0, max);
+const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const safeId = (value: unknown) => clean(value, 64).replace(/[^A-Za-z0-9_-]/g, '');
 
 const normalize = (item: Partial<LegalCase>): LegalCase => ({
-  id: clean(item.id, 64),
+  // id попадает в path.join: `..` и слэши не должны выводить за папку дел
+  id: safeId(item.id),
   title: clean(item.title, 200),
   client: clean(item.client, 200),
   status: item.status === 'work' || item.status === 'closed' ? item.status : 'open',
@@ -56,7 +59,10 @@ const normalize = (item: Partial<LegalCase>): LegalCase => ({
 
 export function createCases(dir: string, store: { read: <T>(name: string, fallback: T) => T; write: (name: string, data: unknown) => void }) {
   const file = () => path.join(dir, 'cases.json');
-  const folder = (id: string) => path.join(dir, 'cases', id);
+  const folder = (id: string) => {
+    if (!ID_RE.test(id)) throw new Error('bad case id');
+    return path.join(dir, 'cases', id);
+  };
 
   const list = () => store.read<LegalCase[]>('cases.json', []).map(normalize);
 
@@ -83,20 +89,22 @@ export function createCases(dir: string, store: { read: <T>(name: string, fallba
   };
 
   const remove = (id: string) => {
+    if (!ID_RE.test(id)) return { ok: false as const, error: 'bad id' };
     const items = list();
     const next = items.filter((entry) => entry.id !== id);
     if (next.length === items.length) return { ok: false as const, error: 'not found' };
-    store.write('cases.json', next);
-    // вложения удаляем вместе с делом: лишние копии документов клиента не нужны
+    // сначала файлы, потом запись: если папка занята, дело не исчезает из списка
     try {
       fs.rmSync(folder(id), { recursive: true, force: true });
-    } catch {
-      /* папки может не быть */
+    } catch (error) {
+      return { ok: false as const, error: error instanceof Error ? error.message : 'files not removed' };
     }
+    store.write('cases.json', next);
     return { ok: true as const };
   };
 
   const appendNote = (id: string, text: string) => {
+    if (!ID_RE.test(id)) return { ok: false as const, error: 'bad id' };
     const items = list();
     const item = items.find((entry) => entry.id === id);
     if (!item) return { ok: false as const, error: 'not found' };
@@ -108,6 +116,7 @@ export function createCases(dir: string, store: { read: <T>(name: string, fallba
   };
 
   const attach = (id: string, sources: string[]) => {
+    if (!ID_RE.test(id)) return { ok: false as const, error: 'bad id', files: [] as CaseFile[] };
     const items = list();
     const item = items.find((entry) => entry.id === id);
     if (!item) return { ok: false as const, error: 'not found', files: [] as CaseFile[] };
@@ -151,30 +160,33 @@ export function createCases(dir: string, store: { read: <T>(name: string, fallba
   };
 
   const removeFile = (id: string, target: string) => {
+    if (!ID_RE.test(id)) return { ok: false as const, error: 'bad id' };
     const items = list();
     const item = items.find((entry) => entry.id === id);
     if (!item) return { ok: false as const, error: 'not found' };
     const file = item.files.find((entry) => entry.path === target);
     if (!file) return { ok: false as const, error: 'file not found' };
+    const caseRoot = path.resolve(folder(id));
+    const full = path.resolve(target);
+    if (!full.startsWith(caseRoot + path.sep)) return { ok: false as const, error: 'outside' };
+    // сначала файл, потом метаданные: если файл занят, запись о нём не исчезает
+    try {
+      fs.rmSync(full, { force: true });
+    } catch (error) {
+      return { ok: false as const, error: error instanceof Error ? error.message : 'file not removed' };
+    }
     item.files = item.files.filter((entry) => entry.path !== target);
     item.updatedAt = now();
     item.version = (item.version ?? 1) + 1;
     store.write('cases.json', items);
-    let warning = '';
-    try {
-      fs.rmSync(target, { force: true });
-    } catch (error) {
-      // Запись из дела уже убрана, но файл остался на диске: не выдаём это
-      // за полный успех и говорим, что именно не удалилось.
-      warning = error instanceof Error ? error.message : String(error);
-    }
-    return { ok: true as const, item, warning };
+    return { ok: true as const, item };
   };
 
   const inside = (target: string) => {
-    const root = path.resolve(dir);
+    // открывать/удалять можно только вложения, а не любой файл внутри userData
+    const root = path.resolve(dir, 'cases');
     const full = path.resolve(target);
-    return full === root || full.startsWith(root + path.sep);
+    return full.startsWith(root + path.sep);
   };
 
   return { list, save, remove, appendNote, attach, removeFile, inside, folder, file };

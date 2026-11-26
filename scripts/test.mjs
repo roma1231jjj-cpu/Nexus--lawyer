@@ -251,3 +251,48 @@ test('остановка помечает ответ как cancelled', async ()
   assert.equal(result.cancelled, true);
   assert.equal(result.text, 'нач');
 });
+
+
+const casesModule = await load('electron/cases.ts', 'cases');
+
+test('вложения с одинаковым именем не перезаписывают друг друга', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-cases-'));
+  const dataDir = path.join(root, 'data');
+  fs.mkdirSync(dataDir, { recursive: true });
+  const first = path.join(root, 'a', 'same.txt');
+  const second = path.join(root, 'b', 'same.txt');
+  fs.mkdirSync(path.dirname(first), { recursive: true });
+  fs.mkdirSync(path.dirname(second), { recursive: true });
+  fs.writeFileSync(first, 'first', 'utf8');
+  fs.writeFileSync(second, 'second', 'utf8');
+  let data = [];
+  const store = { read: () => data, write: (_name, value) => { data = value; } };
+  const cases = casesModule.createCases(dataDir, store);
+  cases.save({ id: 'case-1', title: 'T', client: 'C', country: 'RU' });
+  const result = cases.attach('case-1', [first, second]);
+  assert.equal(result.ok, true);
+  assert.equal(result.files.length, 2);
+  assert.notEqual(result.files[0].path, result.files[1].path);
+  assert.equal(fs.readFileSync(result.files[0].path, 'utf8'), 'first');
+  assert.equal(fs.readFileSync(result.files[1].path, 'utf8'), 'second');
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('id дела и путь вложения не выводят за папку дел', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-cases-'));
+  const dataDir = path.join(root, 'data');
+  fs.writeFileSync(path.join(root, 'secret.txt'), 'secret', 'utf8');
+  let data = [{
+    id: 'case-1', title: 'T', client: 'C', status: 'open', country: 'RU', summary: '',
+    notes: [], files: [{ name: 'x', path: path.join(root, 'secret.txt'), size: 1, addedAt: new Date().toISOString() }],
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
+  }];
+  const store = { read: () => data, write: (_name, value) => { data = value; } };
+  const cases = casesModule.createCases(dataDir, store);
+  assert.equal(cases.attach('../evil', []).ok, false);
+  assert.equal(cases.inside(path.join(dataDir, 'cases', 'case-1', 'x.txt')), true);
+  assert.equal(cases.inside(path.join(dataDir, 'token.txt')), false);
+  assert.equal(cases.removeFile('case-1', path.join(root, 'secret.txt')).ok, false);
+  assert.equal(fs.existsSync(path.join(root, 'secret.txt')), true);
+  fs.rmSync(root, { recursive: true, force: true });
+});

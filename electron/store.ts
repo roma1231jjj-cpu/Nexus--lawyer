@@ -59,24 +59,30 @@ function decodeSettings(raw: StoredSettings): Partial<Settings> {
 
 export function createStore(dir: string) {
   const file = (name: string) => path.join(dir, name);
+  const blockedWrites = new Set<string>();
   const read = <T,>(name: string, fallback: T): T => {
     const target = file(name);
     try {
       return JSON.parse(fs.readFileSync(target, 'utf8')) as T;
     } catch (error) {
-      // повреждённый файл не затираем молча: сохраняем копию для восстановления
-      if (fs.existsSync(target)) {
-        try {
-          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-          fs.copyFileSync(target, `${target}.corrupt-${stamp}`);
-        } catch {
-          /* копия не удалась — хотя бы не падаем */
-        }
+      if (!fs.existsSync(target)) return fallback;
+      // Повреждённый файл уводим в .corrupt-* и только потом отдаём fallback.
+      // Раньше копия создавалась, но битый оригинал оставался на месте, и
+      // следующее сохранение молча затирало его.
+      try {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        fs.renameSync(target, target + '.corrupt-' + stamp);
+        blockedWrites.delete(name);
+      } catch {
+        blockedWrites.add(name);
       }
       return fallback;
     }
   };
   const write = (name: string, data: unknown) => {
+    if (blockedWrites.has(name)) {
+      throw new Error(name + ' повреждён: не удалось сохранить копию .corrupt, запись остановлена');
+    }
     fs.mkdirSync(dir, { recursive: true });
     const target = file(name);
     fs.writeFileSync(target + '.tmp', JSON.stringify(data, null, 2), 'utf8');
