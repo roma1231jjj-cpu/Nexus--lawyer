@@ -358,6 +358,7 @@ const streams = new Map<string, AbortController>();
 
 app.whenReady().then(async () => {
   if (process.platform === 'win32') app.setAppUserModelId('ru.autsquad.nexuslawyer');
+  store.secureKey();
   registerIpc();
   await createWindow();
 
