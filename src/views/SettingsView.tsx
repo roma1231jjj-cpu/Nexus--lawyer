@@ -8,6 +8,7 @@ type Props = {
   settings: Settings;
   countries: Country[];
   onSave: (patch: Partial<Settings>) => Promise<Settings>;
+  onCountry: (code: string) => Promise<void>;
   onTheme: (theme: Theme) => void;
   onLanguage: (lang: Lang) => void;
   info: { version: string; userData: string; electron: string; packaged: boolean } | null;
@@ -23,7 +24,7 @@ const presets = [
 
 const isLocal = (url: string) => /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/i.test(url.trim());
 
-export default function SettingsView({ settings, countries, onSave, onTheme, onLanguage, info }: Props) {
+export default function SettingsView({ settings, countries, onSave, onCountry, onTheme, onLanguage, info }: Props) {
   const t = useT();
   const lang = useLang();
   const [models, setModels] = useState<string[]>([]);
@@ -35,7 +36,15 @@ export default function SettingsView({ settings, countries, onSave, onTheme, onL
     setDraft((prev) => ({ ...prev, ...patch }));
     try {
       const next = await onSave(patch);
-      setDraft(next);
+      // Обновляем только сохранённые поля: иначе ответ сервера затирает
+      // текст, который пользователь уже печатает в соседнем поле.
+      setDraft((prev) => {
+        const merged = { ...prev };
+        for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
+          (merged as Record<string, unknown>)[key as string] = next[key];
+        }
+        return merged;
+      });
       setError(null);
     } catch {
       setError(t('settings.saveFailed'));
@@ -201,7 +210,15 @@ export default function SettingsView({ settings, countries, onSave, onTheme, onL
           </div>
           <div className="field">
             <label>{t('settings.defaultCountry')}</label>
-            <select className="input" value={draft.country} onChange={(event) => void persist({ country: event.target.value })}>
+            <select
+              className="input"
+              value={draft.country}
+              onChange={(event) => {
+                const code = event.target.value;
+                setDraft((prev) => ({ ...prev, country: code }));
+                void onCountry(code);
+              }}
+            >
               <option value="ALL">{t('laws.allCountries')}</option>
               {countries.map((item) => (
                 <option key={item.code} value={item.code}>

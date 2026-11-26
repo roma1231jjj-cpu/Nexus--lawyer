@@ -116,7 +116,8 @@ export default function CasesView({ cases, country, onChange }: Props) {
   };
 
   const pick = (item: LegalCase) => {
-    if (dirtyRef.current && item.id !== draft.id && !window.confirm(t('cases.discardConfirm'))) return;
+    if (item.id === draft.id) return;
+    if (dirtyRef.current && !window.confirm(t('cases.discardConfirm'))) return;
     clearDraft();
     setSelected(item.id);
     setDraft(item);
@@ -213,12 +214,18 @@ export default function CasesView({ cases, country, onChange }: Props) {
 
   const removeFile = async (path: string) => {
     if (!window.confirm(t('cases.removeFileConfirm'))) return;
+    if (dirtyRef.current && cases.some((item) => item.id === draft.id)) {
+      // удаление файла не должно затирать несохранённые поля карточки
+      const saved = await save();
+      if (!saved) return;
+    }
     const result = await api.removeCaseFile(draft.id, path).catch(() => null);
     if (!result?.ok || !result.item) {
       setFlash(t('cases.saveFailed'));
       return;
     }
     setDraft(result.item);
+    if (result.warning) setFlash(t('cases.removeFileWarning', { error: result.warning }));
     await onChange();
   };
 

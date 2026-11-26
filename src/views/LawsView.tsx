@@ -88,8 +88,10 @@ export default function LawsView({ countries, counts, total, country, onCountry,
     : countryMeta(country, lang, current?.system, current?.note);
   const list = useMemo(() => {
     if (results) return results.hits.map((hit) => hit.article);
-    return activeCode === 'ALL' ? articles : articles.filter((article) => article.code === activeCode);
-  }, [results, activeCode, articles]);
+    if (activeCode === 'ALL') return articles;
+    // в режиме «Все страны» вкладки — это страны, а не код отрасли
+    return articles.filter((article) => (country === 'ALL' ? article.country === activeCode : article.code === activeCode));
+  }, [results, activeCode, articles, country]);
 
   const flash = (text: string) => {
     setNotice(text);

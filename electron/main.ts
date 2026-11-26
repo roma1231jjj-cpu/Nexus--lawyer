@@ -111,14 +111,42 @@ async function runScreenshots() {
 
 const ALLOWED_ANSWER = new Set(['ru', 'en', 'de']);
 
-type StoredChat = { role: 'user' | 'assistant'; text: string };
+type StoredChat = {
+  role: 'user' | 'assistant';
+  text: string;
+  sources?: { id: string; code: string; number: string; title: string; country: string; text: string }[];
+  mode?: 'ai' | 'offline';
+  error?: string;
+  cancelled?: boolean;
+  country?: string;
+};
 
 function sanitizeChat(list: unknown): StoredChat[] {
   if (!Array.isArray(list)) return [];
   return list
     .filter((item) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.text === 'string')
     .slice(-60)
-    .map((item) => ({ role: item.role as 'user' | 'assistant', text: String(item.text).slice(0, 8000) }));
+    .map((item) => {
+      const sources = Array.isArray(item.sources)
+        ? item.sources.slice(0, 12).map((source: Record<string, unknown>) => ({
+            id: String(source.id ?? '').slice(0, 80),
+            code: String(source.code ?? '').slice(0, 80),
+            number: String(source.number ?? '').slice(0, 40),
+            title: String(source.title ?? '').slice(0, 300),
+            country: String(source.country ?? '').slice(0, 8),
+            text: String(source.text ?? '').slice(0, 1200),
+          }))
+        : undefined;
+      return {
+        role: item.role as 'user' | 'assistant',
+        text: String(item.text).slice(0, 8000),
+        ...(sources && sources.length ? { sources } : {}),
+        ...(item.mode === 'ai' || item.mode === 'offline' ? { mode: item.mode } : {}),
+        ...(typeof item.error === 'string' && item.error ? { error: item.error.slice(0, 500) } : {}),
+        ...(item.cancelled === true ? { cancelled: true } : {}),
+        ...(typeof item.country === 'string' && item.country ? { country: item.country.slice(0, 8) } : {}),
+      };
+    });
 }
 
 function registerIpc() {
@@ -127,6 +155,13 @@ function registerIpc() {
     platform: process.platform,
     userData: app.getPath('userData'),
     packaged: app.isPackaged,
+    build: !app.isPackaged
+      ? 'dev'
+      : process.env.PORTABLE_EXECUTABLE_FILE
+        ? 'portable'
+        : process.execPath.includes('win-unpacked')
+          ? 'unpacked'
+          : 'installer',
     shots: Boolean(shotsArg),
     electron: process.versions.electron,
     repo: REPO
@@ -289,6 +324,8 @@ function registerIpc() {
   });
   ipcMain.handle('cases:removeFile', (_event, payload: { id: string; path: string }) => cases.removeFile(payload?.id, String(payload?.path ?? '')));
   ipcMain.handle('cases:openFile', async (_event, target: string) => {
+    const known = cases.list().some((item) => item.files.some((file) => file.path === target));
+    if (!known) return { ok: false, error: 'not attachment' };
     if (!cases.inside(target)) return { ok: false, error: 'outside' };
     if (!fs.existsSync(target)) return { ok: false, error: 'missing' };
     const error = await shell.openPath(target);
@@ -326,7 +363,12 @@ function registerIpc() {
           [...line]
             .map((char) => {
               const code = char.codePointAt(0) ?? 0;
-              return code > 127 ? `\\u${code}?` : char;
+              if (code <= 127) return char;
+              // RTF \u expects a signed 16-bit UTF-16 unit; non-BMP chars need a surrogate pair.
+              const unit = (value: number) => `\\u${value > 0x7fff ? value - 0x10000 : value}?`;
+              if (code <= 0xffff) return unit(code);
+              const rest = code - 0x10000;
+              return unit(0xd800 + (rest >> 10)) + unit(0xdc00 + (rest & 0x3ff));
             })
             .join('')
         )

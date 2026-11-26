@@ -160,12 +160,15 @@ export function createCases(dir: string, store: { read: <T>(name: string, fallba
     item.updatedAt = now();
     item.version = (item.version ?? 1) + 1;
     store.write('cases.json', items);
+    let warning = '';
     try {
       fs.rmSync(target, { force: true });
-    } catch {
-      /* файл мог быть удалён вручную */
+    } catch (error) {
+      // Запись из дела уже убрана, но файл остался на диске: не выдаём это
+      // за полный успех и говорим, что именно не удалилось.
+      warning = error instanceof Error ? error.message : String(error);
     }
-    return { ok: true as const, item };
+    return { ok: true as const, item, warning };
   };
 
   const inside = (target: string) => {

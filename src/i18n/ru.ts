@@ -8,7 +8,9 @@ export const ru = {
   'app.noModel': 'модель не выбрана',
   'app.inBase': '{n} в базе',
   'app.caseTitle': 'Консультация {date}',
-  'app.buildPortable': 'portable / установщик',
+  'app.buildPortable': 'portable',
+  'app.buildInstaller': 'установщик',
+  'app.buildUnpacked': 'распакованная сборка',
   'app.buildDev': 'сборка из исходников',
 
   'common.cancel': 'Отмена',
@@ -61,6 +63,7 @@ export const ru = {
   'chat.emptyAnswer': 'Модель не вернула ответ. Проверьте адрес сервера в настройках.',
 
   'cases.stale': 'Дело изменилось в другом окне — обновите список и повторите.',
+  'chat.queueFull': 'Очередь заполнена: дождитесь ответа или остановите генерацию',
   'chat.queued': 'Отправлю сразу после текущего ответа.',
   'chat.cancelled': 'Остановлено.',
   'chat.contextCleared': 'Страна изменена — прошлый диалог очищен, чтобы правовые системы не смешивались.',
@@ -96,6 +99,7 @@ export const ru = {
   'cases.unsaved': 'не сохранено',
   'cases.revert': 'отменить правки',
   'cases.removeFileConfirm': 'Убрать файл из дела? Копия в папке дела удалится.',
+  'cases.removeFileWarning': 'Файл убран из дела, но с диска не удалился: {{error}}',
 
   'docs.saved': 'Сохранено: {path}',
   'docs.sideNote': 'Шаблон — каркас, а не готовый документ. Проверяйте факты, реквизиты и приложения перед отправкой.',

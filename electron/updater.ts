@@ -31,8 +31,9 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
 
   const portable = Boolean(process.env.PORTABLE_EXECUTABLE_DIR) || /portable/i.test(process.env.NEXUS_LAWYER_BUILD ?? '');
 
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  // Скачивание и установка — только по явной кнопке пользователя.
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = channel() === 'beta';
   autoUpdater.logger = null;
 
@@ -55,7 +56,16 @@ export function createUpdater(send: (status: UpdateStatus) => void, feedUrl: () 
   autoUpdater.on('update-downloaded', (info) => push({ stage: 'ready', version: info.version, percent: 100, message: localize('idle.downloaded') }, true));
   autoUpdater.on('error', (error) => {
     const raw = error?.message ?? '';
-    if (/No published versions|404/i.test(raw)) {
+    if (/No published versions/i.test(raw)) {
+      push({ stage: 'none', percent: undefined, message: localize('idle.noReleases') }, true);
+      return;
+    }
+    if (/404/i.test(raw)) {
+      // 404 собственного сервера обновлений — это сломанный фид, а не «релизов нет».
+      if (feedUrl()) {
+        push({ stage: 'error', percent: undefined, message: localize('idle.feed404') }, true);
+        return;
+      }
       push({ stage: 'none', percent: undefined, message: localize('idle.noReleases') }, true);
       return;
     }

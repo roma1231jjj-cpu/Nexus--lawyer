@@ -1,0 +1,35 @@
+{
+  "version": "1.0.4",
+  "builtAt": "2026-11-26T16:52:43.444Z",
+  "product": "Nexus-Юрист",
+  "files": [
+    {
+      "kind": "portable exe",
+      "folder": "release-portable-exe",
+      "file": "nexus-lawyer-1.0.4-portable.exe",
+      "bytes": 74841455,
+      "sha256": "5197d9d35b8a7144b3850d1eb1b5addb599f0f26ec50cacf9e5c6f5c2ac55610"
+    },
+    {
+      "kind": "portable zip",
+      "folder": "release-portable-zip",
+      "file": "nexus-lawyer-1.0.4-portable.zip",
+      "bytes": 111908097,
+      "sha256": "b36e33f3216c79c1b195093a9f6eca8f6f82fe012cd74223224258e2c002e9ff"
+    },
+    {
+      "kind": "установщик",
+      "folder": "release-installer",
+      "file": "nexus-lawyer-setup-1.0.4.exe",
+      "bytes": 82266922,
+      "sha256": "0aa26ce9dd4b86f7104f91828a1e455152f599f7f6780c30c195c4859225248d"
+    },
+    {
+      "kind": "установщик",
+      "folder": "release-installer",
+      "file": "nexus-lawyer-setup-1.0.4.exe.blockmap",
+      "bytes": 85635,
+      "sha256": "44c9249a2c3369614d064d01afc438a91d754c9e42cb342dc6442dbe7bc153f5"
+    }
+  ]
+}

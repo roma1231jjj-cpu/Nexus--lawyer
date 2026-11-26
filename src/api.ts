@@ -106,7 +106,7 @@ export type UpdateStatus = {
 };
 
 export type Api = {
-  info(): Promise<{ version: string; platform: string; userData: string; packaged: boolean; shots?: boolean; electron: string; repo: { owner: string; repo: string } }>;
+  info(): Promise<{ version: string; platform: string; userData: string; packaged: boolean; build?: 'dev' | 'portable' | 'unpacked' | 'installer'; shots?: boolean; electron: string; repo: { owner: string; repo: string } }>;
   getSettings(): Promise<Settings>;
   saveSettings(patch: Partial<Settings>): Promise<Settings>;
   models(settings?: Settings): Promise<{ models: string[]; ok: boolean; error?: string }>;
@@ -127,7 +127,7 @@ export type Api = {
   deleteCase(id: string): Promise<{ ok: boolean; error?: string }>;
   caseNote(id: string, text: string): Promise<{ ok: boolean; item?: LegalCase; error?: string }>;
   attach(id: string): Promise<{ ok: boolean; files: CaseFile[]; canceled?: boolean; error?: string }>;
-  removeCaseFile(id: string, target: string): Promise<{ ok: boolean; item?: LegalCase; error?: string }>;
+  removeCaseFile(id: string, target: string): Promise<{ ok: boolean; item?: LegalCase; error?: string; warning?: string }>;
   openFile(target: string): Promise<{ ok: boolean; error?: string }>;
   revealCase(id: string): Promise<{ ok: boolean; error?: string }>;
   openDataFolder(): Promise<boolean>;

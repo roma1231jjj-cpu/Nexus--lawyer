@@ -12,7 +12,9 @@ export const en: Dict = {
   'app.noModel': 'no model selected',
   'app.inBase': '{n} in the database',
   'app.caseTitle': 'Consultation {date}',
-  'app.buildPortable': 'portable / installer',
+  'app.buildPortable': 'portable',
+  'app.buildInstaller': 'installer',
+  'app.buildUnpacked': 'unpacked build',
   'app.buildDev': 'dev build',
 
   'common.cancel': 'Cancel',
@@ -65,6 +67,7 @@ export const en: Dict = {
   'chat.emptyAnswer': 'The model returned nothing. Check the server address in Settings.',
 
   'cases.stale': 'The case changed in another window — reload the list and retry.',
+  'chat.queueFull': 'Queue is full: wait for the answer or stop generation',
   'chat.queued': 'I will send it right after this answer.',
   'chat.cancelled': 'Stopped.',
   'chat.contextCleared': 'Country changed — the previous dialogue was cleared so legal systems do not mix.',
@@ -100,6 +103,7 @@ export const en: Dict = {
   'cases.unsaved': 'not saved',
   'cases.revert': 'discard changes',
   'cases.removeFileConfirm': 'Remove the file from the case? Its copy in the case folder will be deleted.',
+  'cases.removeFileWarning': 'The file was removed from the case but not deleted from disk: {{error}}',
 
   'docs.saved': 'Saved: {path}',
   'docs.sideNote': 'A template is a frame, not a finished document. Check facts, requisites and attachments before sending.',

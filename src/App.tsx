@@ -50,14 +50,14 @@ export default function App() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [update, setUpdate] = useState<UpdateStatus>({ stage: 'idle' });
-  const [info, setInfo] = useState<{ version: string; packaged: boolean; userData: string; electron: string; shots?: boolean } | null>(null);
+  const [info, setInfo] = useState<{ version: string; packaged: boolean; build?: 'dev' | 'portable' | 'unpacked' | 'installer'; userData: string; electron: string; shots?: boolean } | null>(null);
   const [pendingSave, setPendingSave] = useState<ChatMessage | null>(null);
   const [saveTarget, setSaveTarget] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const requestRef = useRef<string | null>(null);
   const generationRef = useRef(0);
-  const queuedRef = useRef<string | null>(null);
+  const queuedRef = useRef<{ text: string; country: string }[]>([]);
   const messagesRef = useRef<ChatMessage[]>([]);
   const countryRef = useRef('ALL');
   const demoOn = Boolean(info?.shots);
@@ -120,7 +120,12 @@ export default function App() {
           history.map((item) => ({
             id: uid(),
             role: item.role === 'assistant' ? 'assistant' : 'user',
-            text: String(item.text ?? '')
+            text: String(item.text ?? ''),
+            sources: Array.isArray(item.sources) ? item.sources : undefined,
+            mode: item.mode === 'ai' || item.mode === 'offline' ? item.mode : undefined,
+            error: typeof item.error === 'string' ? item.error : undefined,
+            cancelled: item.cancelled === true,
+            country: typeof item.country === 'string' ? item.country : undefined
           }))
         );
       }
@@ -179,12 +184,12 @@ export default function App() {
   }, []);
 
   const runChat = useCallback(
-    async (text: string, targetCountry: string) => {
+    async (text: string, targetCountry: string, historyOverride?: ChatMessage[]) => {
       const requestId = uid();
       const generation = generationRef.current + 1;
       generationRef.current = generation;
       requestRef.current = requestId;
-      const history = messagesRef.current
+      const history = (historyOverride ?? messagesRef.current)
         .filter((msg) => !msg.pending && !msg.id.startsWith('demo') && msg.text.trim())
         .slice(-8)
         .map((msg) => ({ role: msg.role, content: msg.text }));
@@ -222,9 +227,14 @@ export default function App() {
         if (generationRef.current === generation) {
           requestRef.current = null;
           setBusy(false);
-          const queued = queuedRef.current;
-          queuedRef.current = null;
-          if (queued) void runChat(queued, countryRef.current);
+          const next = queuedRef.current.shift();
+          if (next) {
+            // Даём React применить ответ в messagesRef, иначе следующий
+            // автоматический вопрос уйдёт без предыдущего ответа.
+            setTimeout(() => {
+              if (!requestRef.current) void runChat(next.text, next.country);
+            }, 60);
+          }
         }
       }
     },
@@ -236,7 +246,11 @@ export default function App() {
       const text = raw.trim();
       if (!text) return false;
       if (busy) {
-        queuedRef.current = text;
+        if (queuedRef.current.length >= 10) {
+          setToast(t('chat.queueFull'));
+          return true;
+        }
+        queuedRef.current.push({ text, country: countryRef.current });
         setToast(t('chat.queued'));
         return true;
       }
@@ -259,7 +273,7 @@ export default function App() {
       );
       requestRef.current = null;
     }
-    queuedRef.current = null;
+    queuedRef.current = [];
     setBusy(false);
   }, [t]);
 
@@ -420,7 +434,7 @@ export default function App() {
           </div>
           <div className="side-meta">
             <span>v{info?.version ?? '1.0.0'}</span>
-            <span>{info?.packaged ? t('app.buildPortable') : t('app.buildDev')}</span>
+            <span>{info?.build === 'installer' ? t('app.buildInstaller') : info?.build === 'portable' ? t('app.buildPortable') : info?.build === 'unpacked' ? t('app.buildUnpacked') : t('app.buildDev')}</span>
           </div>
         </div>
       </aside>
@@ -499,17 +513,16 @@ export default function App() {
               country={country}
               onCountry={(code) => void changeCountry(code)}
               onAsk={(question, articleCountry) => {
-                if (articleCountry && articleCountry !== country) {
-                  setToast(t('laws.askOther'));
-                }
                 setView('chat');
                 void (async () => {
-                  if (articleCountry && articleCountry !== countryRef.current) {
-                    setCountry(articleCountry);
-                    countryRef.current = articleCountry;
-                    await saveSettings({ country: articleCountry }).catch(() => undefined);
+                  const target = articleCountry || countryRef.current;
+                  const switched = target !== countryRef.current;
+                  if (switched) {
+                    if (articleCountry) setToast(t('laws.askOther'));
+                    // Stop the other country's answer and drop its history before asking.
+                    await changeCountry(target);
                   }
-                  send(question);
+                  await runChat(question, target, switched ? [] : undefined);
                 })();
               }}
               onImported={async () => {
@@ -530,6 +543,7 @@ export default function App() {
               settings={settings}
               countries={countries}
               onSave={saveSettings}
+              onCountry={async (code) => { await changeCountry(code); }}
               info={info}
               onTheme={(theme) => applyTheme(theme, true)}
               onLanguage={changeUiLanguage}

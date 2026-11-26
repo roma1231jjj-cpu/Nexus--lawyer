@@ -45,5 +45,6 @@ export const en: Record<MainKey, string> = {
   'idle.noNetwork': 'no network',
   'idle.noReleasesShort2': 'no releases on GitHub yet',
   'idle.downloadError': 'Download failed',
+  'idle.feed404': 'The update feed returned 404: check the feed URL',
   'idle.networkError': 'No network'
 };

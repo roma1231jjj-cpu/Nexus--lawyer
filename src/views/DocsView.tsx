@@ -67,12 +67,25 @@ const demoDrafts: Record<string, Record<string, string>> = {
   }
 };
 
+const DRAFTS_KEY = 'nexus-lawyer-doc-drafts-v1';
+
+function readDrafts(): Record<string, Record<string, string>> {
+  try {
+    const raw = localStorage.getItem(DRAFTS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function DocsView({ country, demo }: Props) {
   const t = useT();
   const lang = useLang() as DocLang;
   const [templates, setTemplates] = useState<DocTemplate[]>([]);
   const [activeId, setActiveId] = useState<string>('');
-  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>(readDrafts);
   const [status, setStatus] = useState<string | null>(null);
   const [rfConfirmed, setRfConfirmed] = useState(false);
   const seeded = useRef<Set<string>>(new Set());
@@ -85,6 +98,16 @@ export default function DocsView({ country, demo }: Props) {
   const foreign = countryKnown && userCountry !== 'RU';
   const blocked = foreign && !rfConfirmed;
   const ru = lang !== 'en';
+
+  useEffect(() => {
+    // Черновики документов не должны исчезать при переходе на другую вкладку.
+    if (demoOn) return;
+    try {
+      localStorage.setItem(DRAFTS_KEY, JSON.stringify(drafts));
+    } catch {
+      /* хранилище заполнено или отключено — не мешаем работе */
+    }
+  }, [drafts, demoOn]);
 
   useEffect(() => {
     let cancelled = false;

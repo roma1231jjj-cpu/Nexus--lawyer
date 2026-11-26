@@ -43,6 +43,7 @@ export const ru = {
   'idle.noNetwork': 'нет сети',
   'idle.noReleasesShort2': 'релизов на GitHub пока нет',
   'idle.downloadError': 'Ошибка загрузки',
+  'idle.feed404': 'Сервер обновлений ответил 404: проверьте адрес фида',
   'idle.networkError': 'Нет сети'
 };
 
