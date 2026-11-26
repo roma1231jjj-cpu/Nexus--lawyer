@@ -115,9 +115,18 @@ export function createCases(dir: string, store: { read: <T>(name: string, fallba
     fs.mkdirSync(target, { recursive: true });
     const created: string[] = [];
     const added: CaseFile[] = [];
+    const unique = (name: string) => {
+      const ext = path.extname(name);
+      const base = name.slice(0, name.length - ext.length) || 'file';
+      let candidate = name;
+      let index = 1;
+      while (fs.existsSync(path.join(target, candidate))) candidate = `${base}-${index++}${ext}`;
+      return candidate;
+    };
     try {
       for (const source of sources) {
-        const name = path.basename(source);
+        // одинаковые имена не перезаписывают предыдущее вложение
+        const name = unique(path.basename(source));
         const copy = path.join(target, name);
         fs.copyFileSync(source, copy);
         created.push(copy);

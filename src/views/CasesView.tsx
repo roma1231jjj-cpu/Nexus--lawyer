@@ -121,6 +121,7 @@ export default function CasesView({ cases, country, onChange }: Props) {
     setSelected(item.id);
     setDraft(item);
     setDirty(false);
+    setNote('');
   };
 
   const startNew = () => {
@@ -129,6 +130,7 @@ export default function CasesView({ cases, country, onChange }: Props) {
     setDraft(fresh);
     setSelected(fresh.id);
     setDirty(true);
+    setNote('');
     persistDraft(fresh);
   };
 
@@ -161,7 +163,7 @@ export default function CasesView({ cases, country, onChange }: Props) {
     if (!saved) {
       clearDraft();
       setSelected('');
-      setDraft(cases[0] ?? blank(country));
+      setDraft(blank(country));
       setDirty(false);
       return;
     }
@@ -174,7 +176,7 @@ export default function CasesView({ cases, country, onChange }: Props) {
       }
       clearDraft();
       setSelected('');
-      setDraft(cases[0] ?? blank(country));
+      setDraft(blank(country));
       setDirty(false);
       await onChange();
     } catch {
@@ -184,7 +186,8 @@ export default function CasesView({ cases, country, onChange }: Props) {
 
   const attach = async () => {
     let id = draft.id;
-    if (!cases.some((item) => item.id === draft.id)) {
+    if (dirtyRef.current || !cases.some((item) => item.id === draft.id)) {
+      // сначала фиксируем правки карточки, иначе прикрепление их молча теряет
       const result = await save();
       if (!result) {
         setFlash(t('cases.attachNeedSave'));
@@ -221,6 +224,11 @@ export default function CasesView({ cases, country, onChange }: Props) {
 
   const addNote = async () => {
     if (!note.trim()) return;
+    if (dirtyRef.current && cases.some((item) => item.id === draft.id)) {
+      // сохраняем поля карточки, но заметку добавляем отдельно, чтобы не потерять правки
+      const saved = await save();
+      if (!saved) return;
+    }
     if (!cases.some((item) => item.id === draft.id)) {
       const next = { ...draft, notes: [...draft.notes, { id: uid(), text: note.trim(), createdAt: new Date().toISOString() }] };
       setDraft(next);

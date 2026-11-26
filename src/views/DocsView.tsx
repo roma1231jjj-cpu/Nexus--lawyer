@@ -340,7 +340,19 @@ export default function DocsView({ country, demo }: Props) {
                 <button className="btn sm" onClick={() => exportAs('txt')} disabled={blocked} aria-label={t('docs.exportTxt')}>
                   .txt
                 </button>
-                <button className="btn ghost sm" onClick={() => navigator.clipboard?.writeText(text)}>
+                <button
+                  className="btn ghost sm"
+                  onClick={async () => {
+                    try {
+                      if (!navigator.clipboard) throw new Error('no clipboard');
+                      await navigator.clipboard.writeText(text);
+                      setStatus(t('docs.copied'));
+                    } catch {
+                      setStatus(t('docs.copyFailed'));
+                    }
+                    setTimeout(() => setStatus(null), 4000);
+                  }}
+                >
                   {t('docs.copyText')}
                 </button>
               </div>

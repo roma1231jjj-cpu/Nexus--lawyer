@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '../api';
 import { Rich } from '../components/Rich';
 import { IconCopy, IconDoc, IconFolder, IconScales, IconSend, IconSettings, IconSpark, IconStop, Logo } from '../components/Icons';
@@ -42,6 +42,18 @@ export default function ChatView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const stickRef = useRef(true);
+  const [copied, setCopied] = useState<{ id: string; ok: boolean } | null>(null);
+
+  const copy = async (id: string, text: string) => {
+    try {
+      if (!navigator.clipboard) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(text);
+      setCopied({ id, ok: true });
+    } catch {
+      setCopied({ id, ok: false });
+    }
+    setTimeout(() => setCopied(null), 2500);
+  };
 
   useEffect(() => {
     const area = scrollRef.current;
@@ -126,6 +138,9 @@ export default function ChatView({
                       {t('chat.modelError', { error: message.error })}
                     </div>
                   )}
+                  {copied?.id === message.id && !copied.ok && (
+                    <div className="hint-line" style={{ marginTop: 8 }}>{t('chat.copyFailed')}</div>
+                  )}
                 </div>
 
                 <div className="msg-foot">
@@ -135,8 +150,8 @@ export default function ChatView({
                     </span>
                   )}
                   <div className="msg-actions">
-                    <button className="mini-btn" onClick={() => navigator.clipboard?.writeText(message.text)}>
-                      <IconCopy size={13} /> {t('chat.copy')}
+                    <button className="mini-btn" onClick={() => void copy(message.id, message.text)}>
+                      <IconCopy size={13} /> {copied?.id === message.id && copied.ok ? t('chat.copied') : t('chat.copy')}
                     </button>
                     {message.role === 'assistant' && (
                       <button className="mini-btn" onClick={() => onSaveToCase(message)}>

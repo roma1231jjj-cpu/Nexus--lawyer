@@ -216,7 +216,7 @@ export default function App() {
         if (generationRef.current !== generation) return;
         const detail = error instanceof Error ? error.message : String(error);
         setMessages((prev) =>
-          prev.map((msg) => (msg.id === requestId ? { ...msg, text: '', mode: 'offline', error: detail, pending: false } : msg))
+          prev.map((msg) => (msg.id === requestId ? { ...msg, mode: 'offline', error: detail, pending: false } : msg))
         );
       } finally {
         if (generationRef.current === generation) {

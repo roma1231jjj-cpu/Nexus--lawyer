@@ -249,7 +249,11 @@ export const en: Dict = {
   'settings.repo': 'repository',
   'settings.official': 'pravo.gov.ru — official publications',
   'settings.releases': 'releases and updates',
-  'settings.privacy': 'Nexus-Lawyer keeps everything local: neither questions nor cases leave the machine, except to the model you choose.'
+  'settings.privacy': 'Nexus-Lawyer keeps everything local: neither questions nor cases leave the machine, except to the model you choose.',
+  'chat.copied': 'Copied',
+  'chat.copyFailed': 'Could not copy: the browser blocked clipboard access.',
+  'docs.copied': 'Text copied.',
+  'docs.copyFailed': 'Could not copy the text: the browser blocked clipboard access.'
 };
 
 export const demoEn: Demo = {

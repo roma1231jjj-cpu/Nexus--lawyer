@@ -34,9 +34,19 @@ const LANGS = new Set(['ru', 'en', 'de']);
 export function createStore(dir: string) {
   const file = (name: string) => path.join(dir, name);
   const read = <T,>(name: string, fallback: T): T => {
+    const target = file(name);
     try {
-      return JSON.parse(fs.readFileSync(file(name), 'utf8')) as T;
-    } catch {
+      return JSON.parse(fs.readFileSync(target, 'utf8')) as T;
+    } catch (error) {
+      // повреждённый файл не затираем молча: сохраняем копию для восстановления
+      if (fs.existsSync(target)) {
+        try {
+          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+          fs.copyFileSync(target, `${target}.corrupt-${stamp}`);
+        } catch {
+          /* копия не удалась — хотя бы не падаем */
+        }
+      }
       return fallback;
     }
   };

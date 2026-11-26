@@ -60,17 +60,26 @@ export default function LawsView({ countries, counts, total, country, onCountry,
 
   useEffect(() => {
     const value = query.trim();
-    if (value.length < 3) {
+    if (!value) {
       setResults(null);
       return;
     }
+    // короткие номера статей («18», «77») — валидный запрос
+    let active = true;
     const timer = setTimeout(() => {
       api
         .lawsSearch({ query: value, country: 'ALL' })
-        .then((data) => setResults(data ?? { hits: [], total: 0, truncated: false }))
-        .catch(() => setResults({ hits: [], total: 0, truncated: false }));
+        .then((data) => {
+          if (active) setResults(data ?? { hits: [], total: 0, truncated: false });
+        })
+        .catch(() => {
+          if (active) setResults({ hits: [], total: 0, truncated: false });
+        });
     }, 220);
-    return () => clearTimeout(timer);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [query]);
 
   const current = countries.find((item) => item.code === country);
