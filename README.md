@@ -39,9 +39,9 @@
 
 | Формат | Файл | Папка |
 |---|---|---|
-| Portable exe | `nexus-lawyer-1.0.7-portable.exe` | `release-portable-exe/` |
-| Portable zip | `nexus-lawyer-1.0.7-portable.zip` | `release-portable-zip/` |
-| Установщик NSIS | `nexus-lawyer-setup-1.0.7.exe` | `release-installer/` |
+| Portable exe | `nexus-lawyer-1.0.8-portable.exe` | `release-portable-exe/` |
+| Portable zip | `nexus-lawyer-1.0.8-portable.zip` | `release-portable-zip/` |
+| Установщик NSIS | `nexus-lawyer-setup-1.0.8.exe` | `release-installer/` |
 
 Портативные сборки достаточно распаковать и запустить — они не пишут в реестр. Установщик ставит приложение в пользовательский профиль (без прав администратора), создаёт ярлыки и поддерживает автообновление.
 

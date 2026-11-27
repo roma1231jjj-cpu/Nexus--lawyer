@@ -93,13 +93,37 @@ export function createCases(dir: string, store: { read: <T>(name: string, fallba
     const items = list();
     const next = items.filter((entry) => entry.id !== id);
     if (next.length === items.length) return { ok: false as const, error: 'not found' };
-    // сначала файлы, потом запись: если папка занята, дело не исчезает из списка
+    // Папку сначала переименовываем в корзину рядом: если запись базы
+    // упадёт, дело можно вернуть, а не потерять вместе с файлами.
+    const trash = `${folder(id)}.deleting-${Date.now().toString(36)}`;
+    let parked = false;
     try {
-      fs.rmSync(folder(id), { recursive: true, force: true });
+      if (fs.existsSync(folder(id))) {
+        fs.renameSync(folder(id), trash);
+        parked = true;
+      }
     } catch (error) {
       return { ok: false as const, error: error instanceof Error ? error.message : 'files not removed' };
     }
-    store.write('cases.json', next);
+    try {
+      store.write('cases.json', next);
+    } catch (error) {
+      if (parked) {
+        try {
+          fs.renameSync(trash, folder(id));
+        } catch {
+          /* файлы остались в корзине рядом с делом */
+        }
+      }
+      return { ok: false as const, error: error instanceof Error ? error.message : 'cases not saved' };
+    }
+    if (parked) {
+      try {
+        fs.rmSync(trash, { recursive: true, force: true });
+      } catch {
+        /* удалим при следующей уборке, запись уже консистентна */
+      }
+    }
     return { ok: true as const };
   };
 
@@ -155,7 +179,19 @@ export function createCases(dir: string, store: { read: <T>(name: string, fallba
     item.files = [...item.files, ...added];
     item.updatedAt = now();
     item.version = (item.version ?? 1) + 1;
-    store.write('cases.json', items);
+    try {
+      store.write('cases.json', items);
+    } catch (error) {
+      // копии уже на диске: убираем их, чтобы не оставлять файлы без записи
+      for (const copy of created) {
+        try {
+          fs.rmSync(copy, { force: true });
+        } catch {
+          /* ignore */
+        }
+      }
+      return { ok: false as const, error: error instanceof Error ? error.message : 'cases not saved', files: item.files };
+    }
     return { ok: true as const, item, files: item.files };
   };
 
@@ -169,16 +205,39 @@ export function createCases(dir: string, store: { read: <T>(name: string, fallba
     const caseRoot = path.resolve(folder(id));
     const full = path.resolve(target);
     if (!full.startsWith(caseRoot + path.sep)) return { ok: false as const, error: 'outside' };
-    // сначала файл, потом метаданные: если файл занят, запись о нём не исчезает
+    // Файл откладываем рядом: если база не запишется, вернём его на место.
+    const trash = `${full}.deleting-${Date.now().toString(36)}`;
+    let parked = false;
     try {
-      fs.rmSync(full, { force: true });
+      if (fs.existsSync(full)) {
+        fs.renameSync(full, trash);
+        parked = true;
+      }
     } catch (error) {
       return { ok: false as const, error: error instanceof Error ? error.message : 'file not removed' };
     }
     item.files = item.files.filter((entry) => entry.path !== target);
     item.updatedAt = now();
     item.version = (item.version ?? 1) + 1;
-    store.write('cases.json', items);
+    try {
+      store.write('cases.json', items);
+    } catch (error) {
+      if (parked) {
+        try {
+          fs.renameSync(trash, full);
+        } catch {
+          /* отложенный файл остаётся рядом, данные не потеряны */
+        }
+      }
+      return { ok: false as const, error: error instanceof Error ? error.message : 'cases not saved' };
+    }
+    if (parked) {
+      try {
+        fs.rmSync(trash, { force: true });
+      } catch {
+        /* удалим при следующей уборке */
+      }
+    }
     return { ok: true as const, item };
   };
 

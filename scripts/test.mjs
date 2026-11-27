@@ -327,3 +327,38 @@ test('id дела и путь вложения не выводят за папк
   assert.equal(fs.existsSync(path.join(root, 'secret.txt')), true);
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+test('сбой записи базы не теряет удаляемое вложение и дело', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nl-cases-'));
+  const dataDir = path.join(root, 'data');
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+  const source = path.join(root, 'src', 'doc.txt');
+  fs.writeFileSync(source, 'doc', 'utf8');
+  let data = [];
+  let failWrites = false;
+  const store = {
+    read: () => data,
+    write: (_name, value) => {
+      if (failWrites) throw new Error('disk full');
+      data = value;
+    }
+  };
+  const cases = casesModule.createCases(dataDir, store);
+  cases.save({ id: 'case-1', title: 'T', client: 'C', country: 'RU' });
+  const attached = cases.attach('case-1', [source]);
+  const file = attached.files[0];
+  failWrites = true;
+  const removedFile = cases.removeFile('case-1', file.path);
+  assert.equal(removedFile.ok, false);
+  assert.equal(fs.existsSync(file.path), true, 'вложение должно остаться на месте');
+  const removedCase = cases.remove('case-1');
+  assert.equal(removedCase.ok, false);
+  assert.equal(fs.existsSync(path.join(dataDir, 'cases', 'case-1')), true, 'папка дела должна остаться');
+  assert.equal(cases.list().length, 1, 'дело не должно исчезнуть из базы');
+  failWrites = false;
+  assert.equal(cases.removeFile('case-1', file.path).ok, true);
+  assert.equal(fs.existsSync(file.path), false);
+  assert.equal(cases.remove('case-1').ok, true);
+  assert.equal(cases.list().length, 0);
+  fs.rmSync(root, { recursive: true, force: true });
+});

@@ -42,18 +42,14 @@ function canEncrypt() {
   }
 }
 
-/** Ключ API храним через DPAPI (Windows) / Keychain, а не открытым текстом. */
+/**
+ * Ключ API храним через DPAPI (Windows) / Keychain, а не открытым текстом.
+ * Расшифровка возможна только после app.ready, поэтому createStore()
+ * оставляет зашифрованный блок как есть и не подменяет ключ пустой строкой.
+ */
 function decodeSettings(raw: StoredSettings): Partial<Settings> {
   const next = { ...raw };
-  const encoded = typeof raw.apiKeyEnc === 'string' ? raw.apiKeyEnc : '';
   delete next.apiKeyEnc;
-  if (encoded) {
-    try {
-      next.apiKey = safeStorage.decryptString(Buffer.from(encoded, 'base64'));
-    } catch {
-      next.apiKey = '';
-    }
-  }
   return next;
 }
 
@@ -92,27 +88,71 @@ export function createStore(dir: string) {
   const raw = read<StoredSettings>('settings.json', {});
   const saved = decodeSettings(raw);
   let keyEncrypted = !!raw.apiKeyEnc;
+  // зашифрованный ключ держим до app.ready и расшифровываем лениво
+  let pendingEnc = typeof raw.apiKeyEnc === 'string' ? raw.apiKeyEnc : '';
+  let decodeTried = !pendingEnc;
   let settings: Settings = { ...defaultSettings, ...saved };
+
+  /** До ready safeStorage недоступен: пробуем позже, блок не теряем. */
+  const unlock = () => {
+    if (decodeTried || !pendingEnc || !canEncrypt()) return;
+    decodeTried = true;
+    try {
+      settings.apiKey = safeStorage.decryptString(Buffer.from(pendingEnc, 'base64'));
+    } catch {
+      // другой пользователь/профиль: ключ не расшифрован, но apiKeyEnc цел
+      settings.apiKey = '';
+    }
+  };
   // раньше один язык отвечал и за интерфейс, и за ответы — разводим их
   if (!saved.answerLanguage) settings.answerLanguage = LANGS.has(settings.language) ? settings.language : 'ru';
   if (!LANGS.has(settings.language)) settings.language = 'ru';
   if (!LANGS.has(settings.answerLanguage)) settings.answerLanguage = 'ru';
 
   return {
-    getSettings: () => settings,
+    getSettings: () => {
+      unlock();
+      return settings;
+    },
     saveSettings(patch: Partial<Settings>) {
+      unlock();
       settings = { ...settings, ...patch };
       if (!LANGS.has(settings.language)) settings.language = 'ru';
       if (!LANGS.has(settings.answerLanguage)) settings.answerLanguage = settings.language;
       const stored: StoredSettings = { ...settings };
-      if (settings.apiKey && canEncrypt()) {
+      if ('apiKey' in patch) {
+        // ключ меняют явно: пустое значение означает «стереть»
+        if (patch.apiKey && canEncrypt()) {
+          try {
+            pendingEnc = safeStorage.encryptString(settings.apiKey).toString('base64');
+            stored.apiKeyEnc = pendingEnc;
+            delete stored.apiKey;
+            keyEncrypted = true;
+            decodeTried = true;
+          } catch {
+            /* останется открытым — приложение работает, предупреждение в настройках */
+          }
+        } else if (!patch.apiKey) {
+          delete stored.apiKeyEnc;
+          pendingEnc = '';
+          keyEncrypted = false;
+          decodeTried = true;
+        }
+      } else if (settings.apiKey && canEncrypt()) {
         try {
-          stored.apiKeyEnc = safeStorage.encryptString(settings.apiKey).toString('base64');
+          pendingEnc = safeStorage.encryptString(settings.apiKey).toString('base64');
+          stored.apiKeyEnc = pendingEnc;
           delete stored.apiKey;
           keyEncrypted = true;
+          decodeTried = true;
         } catch {
           /* останется открытым — приложение работает, предупреждение в настройках */
         }
+      } else if (pendingEnc) {
+        // ключ ещё не расшифрован (до ready) — сохраняем исходный блок
+        stored.apiKeyEnc = pendingEnc;
+        delete stored.apiKey;
+        keyEncrypted = true;
       } else {
         delete stored.apiKeyEnc;
         keyEncrypted = false;
@@ -122,6 +162,7 @@ export function createStore(dir: string) {
     },
     /** Одноразовая миграция ключа из старого settings.json после app.ready. */
     secureKey() {
+      unlock();
       if (!settings.apiKey || keyEncrypted || !canEncrypt()) return;
       try {
         const stored: StoredSettings = { ...settings, apiKeyEnc: safeStorage.encryptString(settings.apiKey).toString('base64') };
