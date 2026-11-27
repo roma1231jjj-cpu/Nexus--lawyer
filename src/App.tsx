@@ -251,6 +251,9 @@ export default function App() {
           return true;
         }
         queuedRef.current.push({ text, country: countryRef.current });
+        // очищаем поле сразу: иначе тот же вопрос остаётся в вводе и его
+        // можно случайно отправить второй раз
+        setDraft('');
         setToast(t('chat.queued'));
         return true;
       }
@@ -335,6 +338,7 @@ export default function App() {
       `\n${t('chat.mode')}: ${message.mode === 'offline' ? t('chat.modeOffline') : t('chat.modeAi')}${
         message.error ? ` (${message.error})` : ''
       }`,
+      message.cancelled ? t('chat.cancelled') : '',
       `${t('settings.defaultCountry')}: ${message.country ?? country}`
     ].filter(Boolean);
 

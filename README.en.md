@@ -41,9 +41,9 @@ Three themes, the same across every Nexus app: Midnight (black + violet), Ivory 
 
 | Format | File | Folder |
 |---|---|---|
-| Portable exe | `nexus-lawyer-1.0.3-portable.exe` | `release-portable-exe/` |
-| Portable zip | `nexus-lawyer-1.0.3-portable.zip` | `release-portable-zip/` |
-| NSIS installer | `nexus-lawyer-setup-1.0.3.exe` | `release-installer/` |
+| Portable exe | `nexus-lawyer-1.0.7-portable.exe` | `release-portable-exe/` |
+| Portable zip | `nexus-lawyer-1.0.7-portable.zip` | `release-portable-zip/` |
+| NSIS installer | `nexus-lawyer-setup-1.0.7.exe` | `release-installer/` |
 
 The portable builds only need to be unpacked and run — they do not touch the registry. The installer puts the app into the user profile (no administrator rights), creates shortcuts and supports auto-updates.
 

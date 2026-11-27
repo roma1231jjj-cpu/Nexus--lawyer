@@ -366,6 +366,14 @@ export default function DocsView({ country, demo }: Props) {
                 <button
                   className="btn ghost sm"
                   onClick={async () => {
+                    if (blockers.length) {
+                      setStatus(blockers.slice(0, 6).join(' · '));
+                      return;
+                    }
+                    if (blocked) {
+                      setStatus(ru ? 'Подтвердите, что это документ РФ.' : 'Confirm that this is a Russia-only document.');
+                      return;
+                    }
                     try {
                       if (!navigator.clipboard) throw new Error('no clipboard');
                       await navigator.clipboard.writeText(text);

@@ -305,8 +305,22 @@ export function createLaws(bundledDir: string, userFile: string) {
 
   const loadDir = (dir: string, replace = false) => {
     if (!fs.existsSync(dir)) return;
-    for (const name of fs.readdirSync(dir)) {
-      if (!name.endsWith('.json')) continue;
+    const names = fs.readdirSync(dir).filter((name) => name.endsWith('.json'));
+    // Пользовательские пакеты применяются в порядке импорта (mtime), а не
+    // по имени: имя начинается с хэша, поэтому старый пакет мог перебить новый.
+    if (replace) {
+      names.sort((a, b) => {
+        const time = (name: string) => {
+          try {
+            return fs.statSync(path.join(dir, name)).mtimeMs;
+          } catch {
+            return 0;
+          }
+        };
+        return time(a) - time(b) || a.localeCompare(b);
+      });
+    }
+    for (const name of names) {
       try {
         absorb(JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')), replace);
       } catch {
@@ -340,6 +354,9 @@ export function createLaws(bundledDir: string, userFile: string) {
     const base = tokenize(q);
     if (!base.length) return { hits: [], total: 0, truncated: false };
     const tokens = expand(base);
+    // «статья 18» раньше не получала бонус точного номера: он срабатывал
+    // только на запрос целиком из цифр. Достаём номер из составного запроса.
+    const exactNumber = (q.match(/(?:^|\s)(\d+(?:[.\-]\d+)*[a-zа-я]?)(?=\s|$)/i) ?? [])[1]?.toLowerCase() ?? '';
 
     const scored = index
       .filter((item) => !country || country === 'ALL' || item.article.country === country)
@@ -358,10 +375,11 @@ export function createLaws(bundledDir: string, userFile: string) {
         }
         if (!matched) return null;
         // точный номер статьи всегда выше «похожих» номеров (18 против 180/181)
-        if (/^\d+[a-zа-я]?$/i.test(q)) {
-          const bare = item.article.number.toLowerCase().replace(/^ст\.?\s*/, '');
-          if (bare === q) score += 60;
-          else if (bare.startsWith(q)) score += 8;
+        if (exactNumber) {
+          const bare = item.article.number.toLowerCase().replace(/^ст\.?\s*/, '').replace(/\s+/g, '');
+          const wanted = exactNumber.replace(/\s+/g, '');
+          if (bare === wanted) score += 70;
+          else if (bare.startsWith(wanted)) score += 8;
         }
         const preferred = PRIOR.find(([pattern]) => pattern.test(q));
         if (preferred && preferred[1].some((code) => item.article.code.startsWith(code))) score *= 1.5;

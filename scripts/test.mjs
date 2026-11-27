@@ -65,6 +65,37 @@ test('поиск по номеру статьи находит эту стать
   );
 });
 
+test('точный номер в составном запросе «статья 18» идёт первым', () => {
+  const laws = makeLaws(path.join(outdir, 'user-exact'));
+  const result = laws.search('статья 18', 'RU', 10);
+  assert.ok(result.hits.length > 0, 'составной запрос ничего не нашёл');
+  const bare = result.hits[0].article.number.toLowerCase().replace(/^ст\.?\s*/, '');
+  assert.equal(bare, '18', `первым должен быть номер 18, а не ${result.hits[0].article.number}`);
+});
+
+test('пользовательские пакеты применяются в порядке импорта, а не по имени', () => {
+  const userDir = path.join(outdir, 'user-order');
+  fs.mkdirSync(userDir, { recursive: true });
+  const article = (title) => ({
+    id: 'same-1',
+    country: 'KZ',
+    code: 'ТК РК',
+    codeShort: 'ТК РК',
+    number: '1',
+    title,
+    text: 'Проверочная норма для порядка импорта.'
+  });
+  const oldFile = path.join(userDir, 'aaa-old.json');
+  const newFile = path.join(userDir, 'zzz-new.json');
+  fs.writeFileSync(oldFile, JSON.stringify({ articles: [article('Старая редакция')] }), 'utf8');
+  fs.writeFileSync(newFile, JSON.stringify({ articles: [article('Новая редакция')] }), 'utf8');
+  const stamp = Date.now() / 1000;
+  fs.utimesSync(oldFile, stamp - 100, stamp - 100);
+  fs.utimesSync(newFile, stamp, stamp);
+  const laws = makeLaws(userDir);
+  const found = laws.byCountry('KZ').find((item) => item.id === 'same-1');
+  assert.equal(found?.title, 'Новая редакция');
+});
 test('поиск без страны идёт по всем пакетам', () => {
   const laws = makeLaws(path.join(outdir, 'user-all'));
   const all = laws.search('договор', 'ALL', 20);

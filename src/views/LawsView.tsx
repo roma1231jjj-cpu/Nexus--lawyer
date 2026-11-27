@@ -27,6 +27,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
   const [notice, setNotice] = useState<string | null>(null);
   const [packs, setPacks] = useState<{ file: string; articles: number; errors: string[]; dir: 'bundled' | 'user' }[]>([]);
   const [packsOpen, setPacksOpen] = useState(false);
+  const [searchTick, setSearchTick] = useState(0);
 
   const loadPacks = useCallback(async () => {
     const list = await api.lawsPacks().catch(() => []);
@@ -80,7 +81,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
       active = false;
       clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, searchTick]);
 
   const current = countries.find((item) => item.code === country);
   const meta = country === 'ALL'
@@ -115,6 +116,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
         setCodes(data.codes);
         await loadPacks();
         await onImported?.();
+        setSearchTick((value) => value + 1);
       }
     } catch (error) {
       flash(t('laws.importError', { error: error instanceof Error ? error.message : String(error) }));
@@ -132,6 +134,7 @@ export default function LawsView({ countries, counts, total, country, onCountry,
     const data = await api.lawsCountry(country);
     setArticles(data.articles);
     setCodes(data.codes);
+    setSearchTick((value) => value + 1);
     flash(t('laws.packRemoved'));
   };
 
